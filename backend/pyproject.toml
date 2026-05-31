@@ -1,0 +1,34 @@
+[project]
+name = "repolens"
+version = "1.0.0"
+description = "AI 驱动的仓库分析平台 — 代码质量、仓库意图、Git 活动、结构化洞察。"
+requires-python = ">=3.11"
+readme = "README.md"
+license = {text = "MIT"}
+
+dependencies = [
+    "fastapi>=0.110,<1",
+    "uvicorn[standard]>=0.27,<1",
+    "pydantic>=2.5,<3",
+    "aiosqlite>=0.20,<1",
+    "openai>=1.30,<2",
+    "httpx>=0.27,<1",
+    "python-dotenv>=1.0,<2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8,<9",
+    "pytest-asyncio>=0.23,<1",
+    "ruff>=0.3,<1",
+]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+
+[tool.ruff.format]
+quote-style = "double"
