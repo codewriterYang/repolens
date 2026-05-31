@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+from datetime import datetime
 from typing import Optional
 
 import aiosqlite
@@ -80,9 +81,10 @@ async def close_db(db: aiosqlite.Connection) -> None:
 
 async def create_job(db: aiosqlite.Connection, job_id: str, repo_url: str) -> None:
     """插入新的分析任务。"""
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     await db.execute(
-        "INSERT INTO analyses (job_id, repo_url) VALUES (?, ?)",
-        (job_id, repo_url),
+        "INSERT INTO analyses (job_id, repo_url, created_at) VALUES (?, ?, ?)",
+        (job_id, repo_url, now),
     )
     await db.commit()
 

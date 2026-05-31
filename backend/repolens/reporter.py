@@ -76,7 +76,7 @@ class Reporter:
             recommendations=recommendations,
             html_report=html,
             total_duration_ms=int((time.monotonic() - pipeline_start) * 1000),
-            created_at=datetime.utcnow().isoformat(),
+            created_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         )
 
     # ------------------------------------------------------------------
@@ -440,7 +440,7 @@ function toggleAllRisk(show) {{
 </div>
 
 <footer>
-由 RepoLens 生成 &mdash; {datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC')}
+由 RepoLens 生成 &mdash; {datetime.now().strftime('%Y-%m-%d %H:%M')}
 </footer>
 </div>
 </body>

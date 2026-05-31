@@ -22,8 +22,16 @@ class Config:
     llm_timeout_seconds: int = 60
 
     # 分析流水线
-    pipeline_timeout_seconds: int = 180
-    clone_timeout_seconds: int = 120
+    pipeline_timeout_seconds: int = field(
+        default_factory=lambda: int(
+            os.getenv("PIPELINE_TIMEOUT_SECONDS", "600")
+        )
+    )
+    clone_timeout_seconds: int = field(
+        default_factory=lambda: int(
+            os.getenv("CLONE_TIMEOUT_SECONDS", "300")
+        )
+    )
 
     # 数据库
     db_path: str = field(

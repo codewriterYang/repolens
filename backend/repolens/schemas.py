@@ -243,5 +243,5 @@ class ReportJson(BaseModel):
     html_report: str = ""
     total_duration_ms: int = 0
     created_at: str = Field(
-        default_factory=lambda: datetime.utcnow().isoformat()
+        default_factory=lambda: datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     )

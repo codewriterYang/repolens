@@ -38,7 +38,7 @@ logger = logging.getLogger(__name__)
 # 这些是在分析器自身上限之上的额外保护。
 # ---------------------------------------------------------------------------
 
-_TIMEOUT_STATIC = 180   # pylint + radon 在大型仓库上可能较慢
+_TIMEOUT_STATIC = 420   # pylint + radon 在大型仓库上可能较慢
 _TIMEOUT_REPO = 150     # LLM 调用 + 文件 I/O
 _TIMEOUT_GIT = 120      # git 子进程
 

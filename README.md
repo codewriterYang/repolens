@@ -37,6 +37,8 @@ POST /api/analyze
 
 三个分析器互相独立 — 任何一个失败都不会阻碍其他分析器。Reporter 优雅处理缺失结果，部分结果在流水线运行期间可通过 `GET /api/status/{job_id}` 获取。
 
+> 📖 更多文档：[架构设计](./ARCHITECTURE.md) · [工作流程详解](./WORKFLOW.md)
+
 ## 快速开始
 
 ### 环境要求
@@ -132,6 +134,8 @@ HTML 报告包含以下内容：
 - **仓库洞察** — 使用模式、核心模块、LLM 推断风险、README 质量评分
 - **Git 活动** — 提交统计、行内 SVG 时间线图表（12 周趋势）、贡献者表格、活跃文件
 
+> 不知道分析哪个仓库？参见 [samples/README.md](./samples/README.md) 的推荐测试仓库列表。
+
 ## 项目结构
 
 ```
@@ -151,7 +155,8 @@ repolens/
 │   │       ├── repo_analyzer.py    # README + 目录树 + LLM
 │   │       └── git_analyzer.py     # Git 活动 + CI/CD
 │   ├── requirements.txt
-│   └── pyproject.toml
+│   ├── pyproject.toml
+│   └── README.md
 ├── frontend/                  # React + TypeScript 界面
 │   ├── src/
 │   │   ├── components/        # UI 组件
@@ -160,11 +165,13 @@ repolens/
 │   │   ├── types/             # TypeScript 类型定义
 │   │   └── lib/               # API 客户端、工具函数
 │   ├── package.json
-│   └── vite.config.ts
+│   ├── vite.config.ts
+│   └── README.md
 ├── tests/                     # 集成测试
 ├── scripts/                   # 开发辅助脚本
-├── samples/                   # 测试样例
-├── ARCHITECTURE.md            # 详细架构文档
+├── samples/                   # 推荐测试仓库列表
+├── ARCHITECTURE.md            # 系统架构文档
+├── WORKFLOW.md                # 完整工作流程详解
 └── README.md
 ```
 
@@ -189,6 +196,8 @@ repolens/
 | `PORT` | `8770` | 服务器端口 |
 | `DB_PATH` | `data/repolens.db` | SQLite 数据库路径 |
 | `TMP_DIR` | （自动检测系统临时目录） | 仓库克隆临时目录。可选，留空自动适配系统。Linux/Mac → `/tmp/repolens`，Windows → `%TEMP%\repolens` |
+| `PIPELINE_TIMEOUT_SECONDS` | `600` | 流水线总超时（秒），大仓库可适当调大 |
+| `CLONE_TIMEOUT_SECONDS` | `300` | 克隆超时（秒），大仓库可适当调大 |
 
 ## 测试
 

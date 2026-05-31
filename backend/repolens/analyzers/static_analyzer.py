@@ -30,6 +30,7 @@ import json
 import logging
 import re
 import subprocess
+import sys
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -94,7 +95,7 @@ class StaticAnalyzer:
 
     # 子进程超时（秒）。pylint 在大型仓库上可能较慢；
     # radon 通常很快。这些是每个子进程独立的超时。
-    PYLINT_TIMEOUT = 120
+    PYLINT_TIMEOUT = 300
     RADON_TIMEOUT = 60
 
     def __init__(self) -> None:
@@ -213,10 +214,11 @@ class StaticAnalyzer:
     # ------------------------------------------------------------------
 
     async def _run_pylint_json(
-        self, repo_path: str, py_files: list[str]
+        self, repo_path: str, _py_files: list[str]
     ) -> dict[str, list[dict]]:
         """以 JSON 输出运行 pylint；返回按文件分组的消息。
 
+        只传 repo_path 避免 Windows 命令行长度限制（文件多时拼接参数会超 32k 字符）。
         Pylint 退出码：
             0 — 无消息
             1 — 致命消息
@@ -228,7 +230,7 @@ class StaticAnalyzer:
         try:
             def _run() -> str:
                 result = subprocess.run(
-                    ["pylint", "--output-format=json", *py_files],
+                    [sys.executable, "-m", "pylint", "--recursive=y", "--output-format=json", repo_path],
                     capture_output=True, timeout=self.PYLINT_TIMEOUT,
                 )
                 # pylint 退出码是位掩码：bits 0-4 表示发现的问题（正常），bit 5 (32) 才表示调用错误。
@@ -279,10 +281,11 @@ class StaticAnalyzer:
     # ------------------------------------------------------------------
 
     async def _run_pylint_score(
-        self, repo_path: str, py_files: list[str]
+        self, repo_path: str, _py_files: list[str]
     ) -> dict[str, float]:
         """以文本模式运行 pylint 来提取文件级评分。
 
+        只传 repo_path 避免 Windows 命令行长度限制。
         Pylint 的 JSON 模式故意省略评分，因此我们使用 --score=y 运行第二次调用。
         这比听起来更轻量，因为 pylint 在快速连续运行相同文件时会内部缓存 AST
         （操作系统磁盘缓存也帮我们处理了）。
@@ -292,7 +295,7 @@ class StaticAnalyzer:
         try:
             def _run() -> str:
                 result = subprocess.run(
-                    ["pylint", "--score=y", "--output-format=text", *py_files],
+                    [sys.executable, "-m", "pylint", "--recursive=y", "--score=y", "--output-format=text", repo_path],
                     capture_output=True, timeout=self.PYLINT_TIMEOUT,
                 )
                 return result.stdout.decode("utf-8", errors="replace")
@@ -308,33 +311,31 @@ class StaticAnalyzer:
 
     @staticmethod
     def _parse_pylint_scores(text: str) -> dict[str, float]:
-        """解析 pylint 文本输出中的模块级评分。
+        """解析 pylint 文本输出中的评分。
 
-        Pylint 文本输出包含类似以下的行::
+        Pylint 文本输出末尾包含::
 
-            ************* Module mypackage.mymodule
-            mypackage/mymodule.py:42:4: W0612: Unused variable 'x'
-            ...
-            ------------------------------------------------------------------
             Your code has been rated at 8.50/10 (previous run: 8.50/10, +0.00)
 
-        我们提取最终总分，以及可用的模块级评分
-        （较旧版本的 pylint 会打印模块级评分）。
+        同时兼容旧版 pylint 的模块级评分行 "Module xxx 8.50/10"。
 
-        返回 {filepath: score} 映射。
+        返回 {filepath: score} 映射，其中 "__overall__" 为总体评分。
         """
         scores: dict[str, float] = {}
 
-        # 模块级评分行："Module xxx 8.50/10"
-        # （某些 pylint 版本会打印这些）
+        # 旧版模块级评分行："Module xxx 8.50/10"
         for match in re.finditer(
             r"Module\s+(\S+)\s+([\d.]+)/10", text
         ):
             module_name = match.group(1)
             score = float(match.group(2))
-            # 将模块名映射回文件路径的猜测
             filepath = module_name.replace(".", "/") + ".py"
             scores[filepath] = score
+
+        # 整体评分："Your code has been rated at 8.50/10"
+        m = _PYLINT_SCORE_RE.search(text)
+        if m:
+            scores["__overall__"] = float(m.group(1))
 
         return scores
 
@@ -366,7 +367,7 @@ class StaticAnalyzer:
         try:
             def _run() -> str:
                 result = subprocess.run(
-                    ["radon", "cc", "--json", "--min=B", repo_path],
+                    [sys.executable, "-m", "radon", "cc", "--json", "--min=B", repo_path],
                     capture_output=True, timeout=self.RADON_TIMEOUT,
                 )
                 return result.stdout.decode("utf-8", errors="replace")
@@ -438,9 +439,10 @@ class StaticAnalyzer:
             scores_raw if isinstance(scores_raw, dict) else {}
         )
 
-        # 将总分计算为各文件评分的平均值
-        overall: Optional[float] = None
-        if scores:
+        # 提取总体评分（__overall__ 键来自 _PYLINT_SCORE_RE 匹配）
+        overall: Optional[float] = scores.pop("__overall__", None)
+        if overall is None and scores:
+            # 回退：旧版 pylint 模块级评分取平均
             overall = round(sum(scores.values()) / len(scores), 2)
 
         return _PylintOutput(
