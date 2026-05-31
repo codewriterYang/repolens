@@ -61,9 +61,3 @@ export async function fetchHistory(): Promise<HistoryItem[]> {
   const { data } = await apiClient.get<HistoryItem[]>('/history');
   return data;
 }
-
-/** 健康检查 */
-export async function fetchHealth(): Promise<{ status: string }> {
-  const { data } = await apiClient.get<{ status: string }>('/health');
-  return data;
-}

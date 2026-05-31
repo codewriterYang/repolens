@@ -85,5 +85,11 @@ class RepoCloner:
         resolved = str(Path(path).resolve())
         if not os.path.isdir(resolved):
             raise CloneError(f"本地路径不存在或不是目录: {resolved}")
+        # 防止路径遍历：拒绝访问系统关键目录
+        dangerous = {"/etc", "/sys", "/proc", "/dev", "C:\\Windows", "C:\\Windows\\System32"}
+        resolved_lower = resolved.lower()
+        for d in dangerous:
+            if resolved_lower.startswith(d.lower()):
+                raise CloneError(f"拒绝分析系统目录: {resolved}")
         # 本地路径不执行清理 — 它们属于用户。
         return resolved

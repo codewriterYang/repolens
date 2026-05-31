@@ -138,7 +138,7 @@ export function ReportViewer({ report }: ReportViewerProps) {
             <iframe
               ref={iframeRef}
               srcDoc={report.html_report}
-              sandbox="allow-scripts allow-same-origin"
+              sandbox="allow-scripts"
               onLoad={onIframeLoad}
               scrolling="no"
               style={{

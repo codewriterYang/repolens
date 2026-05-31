@@ -9,8 +9,7 @@ React + TypeScript 单页应用，提供仓库分析的可视化界面。
 - **Tailwind CSS** — 原子化样式
 - **Zustand** — 轻量状态管理
 - **Axios** — HTTP 请求
-- **Lucide React** — 图标库
-- **shadcn/ui** — 组件基座（Card 等）
+- **shadcn/ui** — 组件基座（Card、Button 等）
 
 ## 快速开始
 
@@ -71,14 +70,15 @@ frontend/src/
 
 ## 状态管理
 
-使用 Zustand 管理全局分析状态：
+使用 Zustand 管理全局分析状态。Store 中定义了简化的 `UiJobStatus`（idle/queued/running/completed/failed），与后端 `contracts.ts` 中的细粒度 `JobStatus`（queued/cloning/analyzing/reporting/...）做区分，`updateProgress` 负责将后端状态映射为前端 UI 状态。
 
 ```
 analysisStore
 ├── jobId           # 当前任务 ID
-├── status          # 任务状态：queued → running → completed
+├── status          # UiJobStatus：idle → queued → running → completed/failed
 ├── progressPct     # 进度百分比
 ├── stageLabel      # 当前阶段描述
+├── partialResults  # 分析器中间结果
 ├── report          # 完整报告对象（ReportJson）
 └── error           # 错误信息
 ```

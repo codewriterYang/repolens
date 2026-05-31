@@ -26,14 +26,6 @@ export default {
           DEFAULT: 'hsl(0 84% 60%)',
           foreground: 'hsl(210 40% 98%)',
         },
-        warning: {
-          DEFAULT: 'hsl(38 92% 50%)',
-          foreground: 'hsl(0 0% 100%)',
-        },
-        success: {
-          DEFAULT: 'hsl(142 71% 45%)',
-          foreground: 'hsl(0 0% 100%)',
-        },
       },
       borderRadius: {
         lg: '0.5rem',

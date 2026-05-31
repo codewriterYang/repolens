@@ -26,7 +26,10 @@ logging.basicConfig(
 
 # 加载 .env（优先当前目录，其次项目根目录）
 _dotenv_path = Path(__file__).resolve().parent.parent.parent / ".env"
-load_dotenv(_dotenv_path)
+if not load_dotenv(_dotenv_path):
+    logging.warning("未找到 .env 文件 (%s)，使用默认配置。请从 .env.example 创建。", _dotenv_path)
+else:
+    logging.info("已加载配置: %s", _dotenv_path)
 
 from .config import config
 from .db import close_db, create_job, get_history, get_html_report, get_job_status, get_report, init_db
@@ -45,13 +48,15 @@ _orchestrator: Optional[Orchestrator] = None
 
 async def get_db() -> aiosqlite.Connection:
     """获取共享的数据库连接。"""
-    assert _db is not None, "数据库未初始化"
+    if _db is None:
+        raise HTTPException(status_code=503, detail="服务正在启动，请稍后重试")
     return _db
 
 
 async def get_orchestrator() -> Orchestrator:
     """获取编排器实例。"""
-    assert _orchestrator is not None, "编排器未初始化"
+    if _orchestrator is None:
+        raise HTTPException(status_code=503, detail="服务正在启动，请稍后重试")
     return _orchestrator
 
 
@@ -111,7 +116,11 @@ async def analyze(req: AnalyzeRequest) -> AnalyzeResponse:
     await create_job(db, job_id, req.repo_url)
 
     orch = await get_orchestrator()
-    asyncio.create_task(orch.run_pipeline(job_id, req.repo_url))
+    task = asyncio.create_task(orch.run_pipeline(job_id, req.repo_url))
+    task.add_done_callback(
+        lambda t: logging.error("流水线 [%s] 任务异常: %s", job_id, t.exception())
+        if t.exception() else None
+    )
 
     return AnalyzeResponse(job_id=job_id, status="queued")
 

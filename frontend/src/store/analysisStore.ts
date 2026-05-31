@@ -1,11 +1,11 @@
 import { create } from 'zustand';
-import type { ReportJson, StatusResponse } from '@/types/contracts';
+import type { JobStatus, ReportJson, StatusResponse } from '@/types/contracts';
 
 // ---------------------------------------------------------------------------
-// 状态类型
+// 前端 UI 状态（简化后端细粒度状态）
 // ---------------------------------------------------------------------------
 
-export type JobStatus =
+export type UiJobStatus =
   | 'idle'
   | 'queued'
   | 'running'
@@ -16,7 +16,7 @@ export interface AnalysisState {
   // 当前任务
   jobId: string | null;
   repoUrl: string | null;
-  status: JobStatus;
+  status: UiJobStatus;
 
   // 进度
   progressPct: number;
@@ -46,7 +46,7 @@ export interface AnalysisState {
 const initialState = {
   jobId: null,
   repoUrl: null,
-  status: 'idle' as JobStatus,
+  status: 'idle' as UiJobStatus,
   progressPct: 0,
   stageLabel: '',
   partialResults: null,
@@ -73,6 +73,7 @@ export const useAnalysisStore = create<AnalysisState>((set) => ({
     set({
       status: data.status === 'completed' ? 'completed'
         : data.status === 'failed' || data.status === 'timeout' ? 'failed'
+        : data.status === 'queued' ? 'queued'
         : 'running',
       progressPct: data.progress_pct,
       stageLabel: data.stage_label,
