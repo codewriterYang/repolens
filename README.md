@@ -4,13 +4,13 @@
 
 ## 项目简介
 
-RepoLens 对克隆的仓库并行运行三个独立分析器：
+RepoLens 对克隆的仓库并行运行三个 Agent（静态/仓库/Git），通过 AgentRegistry 统一调度：
 
-| 分析器 | 检查内容 | 产出 |
+| Agent（底层分析器） | 检查内容 | 产出 |
 |--------|---------|------|
-| **StaticAnalyzer（静态分析）** | Pylint + Radon 圈复杂度 | 高风险文件、复杂函数、lint 热力图 |
-| **RepoAnalyzer（仓库分析）** | README + 目录树 + 包元数据（LLM 推理） | 使用模式、核心模块、推断风险 |
-| **GitAnalyzer（Git 分析）** | `git log`、`git shortlog`、CI/CD 配置 | 提交历史、贡献者、活动时间线 |
+| **StaticAgent（StaticAnalyzer）** | Pylint + Radon 圈复杂度 | 高风险文件、复杂函数、lint 热力图 |
+| **RepoAgent（RepoAnalyzer）** | README + 目录树 + 包元数据（LLM 推理） | 使用模式、核心模块、推断风险 |
+| **GitAgent（GitAnalyzer）** | `git log`、`git shortlog`、CI/CD 配置 | 提交历史、贡献者、活动时间线 |
 
 **Reporter（报告生成器）** 将所有结果合并为自包含的 HTML 报告，包含可折叠区域、行内图表和优先排序的改进建议。
 
@@ -20,13 +20,13 @@ RepoLens 对克隆的仓库并行运行三个独立分析器：
 POST /api/analyze
        │
        ▼
-   Orchestrator（异步编排）
+   Orchestrator（异步编排 + AgentRegistry）
        │
-       ├──▶ git clone（30秒超时）
+       ├──▶ git clone（300s 超时）
        │
-       ├──▶ StaticAnalyzer ──┐
-       ├──▶ RepoAnalyzer   ──┼── 并行（asyncio.gather）
-       └──▶ GitAnalyzer    ──┘
+       ├──▶ StaticAgent ──┐
+       ├──▶ RepoAgent   ──┼── 并行（AgentRegistry 调度）
+       └──▶ GitAgent    ──┘
               │
               ▼
           Reporter（报告生成）
@@ -35,7 +35,7 @@ POST /api/analyze
        GET /api/report/{job_id}
 ```
 
-三个分析器互相独立 — 任何一个失败都不会阻碍其他分析器。Reporter 优雅处理缺失结果，部分结果在流水线运行期间可通过 `GET /api/status/{job_id}` 获取。
+三个 Agent 互相独立 — 任何一个失败都不会阻碍其他 Agent。Reporter 优雅处理缺失结果，部分结果在流水线运行期间可通过 `GET /api/status/{job_id}` 获取。
 
 > 📖 更多文档：[架构设计](./ARCHITECTURE.md) · [工作流程详解](./WORKFLOW.md)
 
@@ -150,6 +150,12 @@ repolens/
 │   │   ├── reporter.py        # HTML 报告生成器
 │   │   ├── cloner.py          # Git 克隆/清理工具
 │   │   ├── llm_service.py     # OpenAI 兼容 LLM 客户端
+│   │   ├── agents/              # Agent 层（v2.0）
+│   │   │   ├── base.py          # BaseAgent 抽象基类
+│   │   │   ├── static_agent.py  # 封装 StaticAnalyzer
+│   │   │   ├── repo_agent.py    # 封装 RepoAnalyzer
+│   │   │   ├── git_agent.py     # 封装 GitAnalyzer
+│   │   │   └── registry.py      # AgentRegistry 注册中心
 │   │   └── analyzers/
 │   │       ├── static_analyzer.py  # Pylint + Radon
 │   │       ├── repo_analyzer.py    # README + 目录树 + LLM

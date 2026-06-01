@@ -66,6 +66,48 @@ StaticResult        RepoResult                GitResult
                     git_analysis）
 ```
 
+## Agent 架构（v2.0）
+
+v2.0 引入了 Agent 抽象层，将三个分析器通过统一接口包装。
+
+### BaseAgent 接口
+
+```python
+class BaseAgent(ABC):
+    name: str
+
+    @abstractmethod
+    async def run(self, repo_path: str, **kwargs: Any) -> Any:
+        ...
+```
+
+### Agent 实现
+
+| Agent | 封装的分析器 | 额外参数 |
+|-------|-------------|---------|
+| `StaticAgent` | `StaticAnalyzer` | 无 |
+| `RepoAgent` | `RepoAnalyzer` | `repo_url`（通过 kwargs） |
+| `GitAgent` | `GitAnalyzer` | 无 |
+
+每个 Agent 是纯包装层 — 内部直接委托给对应 Analyzer，
+不修改原有分析逻辑。
+
+### AgentRegistry 设计
+
+```
+AgentRegistry
+├── register(agent)     # 按 name 注册 Agent
+├── get(name) → Agent   # 按名称获取
+├── list() → [str]      # 列出已注册名称
+└── run_all(tasks)      # 并行调度多个 Agent
+```
+
+Orchestrator 通过 AgentRegistry 获取和调度 Agent，
+不再直接持有分析器实例。这为后续 Agent 热插拔、
+动态启停提供了基础。
+
+---
+
 ## 分析器设计
 
 ### StaticAnalyzer（静态分析器）

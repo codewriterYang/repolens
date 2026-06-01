@@ -53,9 +53,9 @@ GitHub URL（用户输入）
 - **清理**：流水线结束后自动删除（`finally` 块中调用 `cleanup()`）
 - **支持本地路径**：如果输入不是 HTTP(S) URL，则作为本地目录路径直接使用（不做克隆和清理）
 
-## 阶段二：三大分析器并行执行
+## 阶段二：三大 Agent 并行执行
 
-三个分析器通过 `asyncio.gather` 同时启动，各自有独立超时，单个失败不影响整体。
+三个 Agent（各封装一个 Analyzer）通过 Orchestrator → AgentRegistry → `asyncio.gather` 同时启动，各自有独立超时，单个失败不影响整体。
 
 ### 2.1 StaticAnalyzer — 代码质量分析
 

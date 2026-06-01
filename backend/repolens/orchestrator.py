@@ -2,12 +2,15 @@
 
 设计：
 - 接收 job_id 和 repo_url，异步执行完整流水线。
-- 三个分析器并行运行（asyncio.gather），各自有独立超时。
-- Reporter 在分析器完成后串行运行。
+- 三个 Agent 通过 AgentRegistry 并行调度，各自有独立超时。
+- Reporter 在 Agent 完成后串行运行。
 - 状态更新写入数据库供前端轮询。
-- 优雅降级：单个分析器失败不会导致整体崩溃。
+- 优雅降级：单个 Agent 失败不会导致整体崩溃。
 - 流水线级超时防止失控任务。
 - 结构化日志追踪执行过程。
+
+v2.0: Agent 架构 — 分析器通过 BaseAgent 接口统一包装，
+由 AgentRegistry 注册和调度，Orchestrator 不再直接持有分析器实例。
 """
 
 from __future__ import annotations
@@ -20,6 +23,7 @@ from typing import Optional
 
 import aiosqlite
 
+from .agents import AgentRegistry, GitAgent, RepoAgent, StaticAgent
 from .analyzers.git_analyzer import GitAnalyzer
 from .analyzers.repo_analyzer import RepoAnalyzer
 from .analyzers.static_analyzer import StaticAnalyzer
@@ -57,11 +61,21 @@ class Orchestrator:
     def __init__(self, db: aiosqlite.Connection, llm: LLMService):
         self._db = db
         self._llm = llm
-        self._static = StaticAnalyzer()
-        self._repo = RepoAnalyzer(llm)
-        self._git = GitAnalyzer()
         self._reporter = Reporter()
         self._cloner = RepoCloner()
+
+        # --- v2.0: Agent 架构 ---
+        # Agent 通过 Registry 注册，Orchestrator 不再直接持有分析器实例。
+        # run_analyzers 中通过 registry.get() 调度 Agent。
+        self._registry = AgentRegistry()
+        self._registry.register(StaticAgent())
+        self._registry.register(RepoAgent(llm))
+        self._registry.register(GitAgent())
+
+        logger.debug(
+            "Orchestrator 已注册 %d 个 Agent: %s",
+            len(self._registry), self._registry.list(),
+        )
 
     # ------------------------------------------------------------------
     # 公开接口
@@ -194,9 +208,10 @@ class Orchestrator:
 
         async def run_static() -> Optional[StaticResult]:
             t0 = time.monotonic()
+            agent = self._registry.get("static")
             try:
                 result = await asyncio.wait_for(
-                    self._static.run(repo_path), timeout=_TIMEOUT_STATIC,
+                    agent.run(repo_path), timeout=_TIMEOUT_STATIC,
                 )
                 durations["static"] = time.monotonic() - t0
                 if result.error:
@@ -223,9 +238,10 @@ class Orchestrator:
 
         async def run_repo() -> Optional[RepoResult]:
             t0 = time.monotonic()
+            agent = self._registry.get("repo")
             try:
                 result = await asyncio.wait_for(
-                    self._repo.run(repo_path, repo_url), timeout=_TIMEOUT_REPO,
+                    agent.run(repo_path, repo_url=repo_url), timeout=_TIMEOUT_REPO,
                 )
                 durations["repo"] = time.monotonic() - t0
                 if result.error:
@@ -252,9 +268,10 @@ class Orchestrator:
 
         async def run_git() -> Optional[GitResult]:
             t0 = time.monotonic()
+            agent = self._registry.get("git")
             try:
                 result = await asyncio.wait_for(
-                    self._git.run(repo_path), timeout=_TIMEOUT_GIT,
+                    agent.run(repo_path), timeout=_TIMEOUT_GIT,
                 )
                 durations["git"] = time.monotonic() - t0
                 if result.error:
