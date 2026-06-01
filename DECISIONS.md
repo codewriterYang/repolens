@@ -109,7 +109,7 @@ RepoAnalyzer LLM 失败 → 纯启发式回退
 后端: FastAPI + Pydantic v2 + aiosqlite + subprocess(git/pylint/radon) + OpenAI兼容API
 前端: React 18 + TypeScript + Vite + Zustand + Tailwind + shadcn/ui + Axios
 存储: SQLite (WAL)
-架构: Agent 抽象层 + Context 层 + Memory 层 + PlannerAgent 协作 + 三层优雅降级
+架构: Agent 抽象层 + Context 层 + Memory 层 + Planner → Agents → ReportAgent 协作链 + 三层优雅降级
 工程: 模块化单仓库 + 跨平台 subprocess
 测试: pytest 集成测试 (12 用例) + Vitest 组件测试
 ```

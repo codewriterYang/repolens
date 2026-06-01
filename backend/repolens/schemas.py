@@ -230,6 +230,32 @@ class AnalysisPlan(BaseModel):
     priority: str = Field(default="normal", description="normal 或 high")
 
 
+class ReportResult(BaseModel):
+    """ReportAgent 产出的汇总报告。
+
+    从 SharedMemory 读取各 Agent 的分析结果后生成，
+    包含结构化 JSON 摘要和可渲染 HTML。
+    """
+
+    repo_name: str = Field(default="", description="仓库名")
+    repo_url: str = Field(default="", description="仓库 URL")
+    analysis_id: str = Field(default="", description="分析任务 ID")
+
+    # 摘要统计
+    total_files_scanned: int = 0
+    pylint_score: float | None = None
+    total_commits: int = 0
+    unique_contributors: int = 0
+    ci_cd_detected: bool = False
+    readme_quality_score: int = 0
+
+    # Agent 状态
+    agents_available: list[str] = Field(default_factory=list)
+
+    # HTML 报告（可折叠结构）
+    html_report: str = Field(default="", description="自包含 HTML 报告")
+
+
 class Recommendation(BaseModel):
     """最终报告中的一条可操作改进建议。"""
 

@@ -37,7 +37,13 @@ class GitAgent(BaseAgent):
             GitResult 包含提交统计、贡献者、活跃文件、CI/CD 状态等。
         """
         self._read_analysis_plan()
-        return await self._analyzer.run(context.repo_path)
+        result = await self._analyzer.run(context.repo_path)
+
+        # Phase 6: 将结果写入 SharedMemory 供 ReportAgent 读取
+        if self._memory is not None:
+            self._memory.set("git_result", result)
+
+        return result
 
     def _read_analysis_plan(self) -> None:
         """从 SharedMemory 读取 PlannerAgent 产出的分析计划。"""

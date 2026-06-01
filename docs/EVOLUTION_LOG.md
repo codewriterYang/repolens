@@ -354,7 +354,7 @@ v2.2:
 
 - **时间**：2026-06-01
 - **版本**：v2.3
-- **Commit**：待提交
+- **Commit**：`ba164c1`
 
 ### 目标
 
@@ -425,9 +425,81 @@ v2.3:
 
 ---
 
+## Phase 6 — ReportAgent（生成汇总报告）
+
+- **时间**：2026-06-01
+- **版本**：v2.4
+- **Commit**：待提交
+
+### 目标
+
+引入 ReportAgent，从 SharedMemory 读取三个分析 Agent 的结果，
+生成结构化 JSON + 可折叠 HTML 汇总报告。
+
+### 为什么引入 ReportAgent
+
+Phase 5 建立了 Planner → Memory → Agents 的写入链路，
+但缺少从 Memory 消费数据的 Agent。ReportAgent 填补了这个空缺——
+它读取所有 Agent 写入 SharedMemory 的结果，生成为人可读的汇总报告。
+
+这是 Agent 协作链路的完整闭环：Planner → 分析 Agents → ReportAgent。
+
+### 新增
+
+| 模块 | 文件 | 职责 |
+|------|------|------|
+| `ReportAgent` | `agents/report_agent.py` | 读取 SharedMemory → 生成 ReportResult（JSON + HTML） |
+| `ReportResult` | `schemas.py` | Pydantic 模型：汇总统计 + 自包含 HTML |
+
+### Agent 协作链路（完整闭环）
+
+```
+1. PlannerAgent.run(ctx) → memory.set("analysis_plan", plan)
+2. StaticAgent.run(ctx)  → memory.set("static_result", result)
+   RepoAgent.run(ctx)    → memory.set("repo_result", result)
+   GitAgent.run(ctx)     → memory.set("git_result", result)
+3. ReportAgent.run(ctx)
+     ├─ memory.get("static_result")
+     ├─ memory.get("repo_result")
+     ├─ memory.get("git_result")
+     ├─ 生成 ReportResult (JSON + HTML)
+     └─ memory.set("report_result", result)
+```
+
+### Orchestrator 流程变更
+
+```
+v2.3:  Planner → [Static | Repo | Git] → Reporter(report)
+
+v2.4:  Planner → [Static | Repo | Git] → ReportAgent → Reporter(report)
+```
+
+### HTML 报告内容
+
+- Agent 状态徽章（static / repo / git，彩色标签）
+- 静态分析：扫描文件数、Pylint 评分、复杂函数数
+- 仓库洞察：使用模式、核心模块、README 质量
+- Git 活动：总提交、贡献者数、活跃天数、CI/CD 状态
+- 可折叠章节、零外部 CSS/JS 依赖
+
+### 测试结果
+
+```
+=== RepoLens 端到端验证 ===
+12/12 全部通过
+```
+
+### 收益
+
+- Agent 协作链路首尾闭环：Plan → Execute → Report
+- ReportAgent 可独立替换——不影响其他 Agent 运行
+- SharedMemory 作为 Agent 间总线已验证可行
+
+---
+
 ## 后续规划
 
-### Phase 6 — Agent Collaboration（深入）
+### Phase 7 — 动态策略与深入协作
 
 引入协调 Agent（Orchestrator Agent），Agent 间可传递分析结果。例如 StaticAgent 发现高风险文件后通知 GitAgent 聚焦分析该文件的变更历史。
 

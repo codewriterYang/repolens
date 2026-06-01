@@ -184,18 +184,20 @@ Orchestrator 每次流水线调用 `create()`，结束后调用 `clear()`。
 
 ### Agent 接入（Phase 5: PlannerAgent 协作）
 
-Phase 5 引入 PlannerAgent，实现第一条真实 Agent 协作链路：
+Phase 5–6 实现了完整的 Agent 协作链路：
 
 ```
 Orchestrator → Context+Memory
   ├─→ PlannerAgent.run(ctx)
   │     └─→ memory.set("analysis_plan", plan)
-  └─→ [StaticAgent | RepoAgent | GitAgent].run(ctx)
-        └─→ memory.get("analysis_plan")  # 读取并记录日志
+  ├─→ [StaticAgent | RepoAgent | GitAgent].run(ctx)
+  │     └─→ memory.set("static_result"/"repo_result"/"git_result", result)
+  └─→ ReportAgent.run(ctx)
+        └─→ memory.get(...) → ReportResult (JSON + HTML)
 ```
 
-PlannerAgent 是第一个通过 SharedMemory 与其他 Agent 协作的 Agent。
-当前始终返回默认计划（三个分析器全部启用），后续可扩展为动态策略。
+PlannerAgent 先制定分析计划，分析 Agent 执行并写入结果，
+ReportAgent 读取并生成汇总报告——形成 Plan → Execute → Report 闭环。
 
 ---
 

@@ -157,6 +157,7 @@ repolens/
 │   │   │   ├── repo_agent.py    # 封装 RepoAnalyzer
 │   │   │   ├── git_agent.py     # 封装 GitAnalyzer
 │   │   │   ├── planner_agent.py # PlannerAgent（Phase 5 协作）
+│   │   ├── report_agent.py  # ReportAgent（Phase 6 汇总）
 │   │   │   └── registry.py      # AgentRegistry 注册中心
 │   │   ├── context/             # Context 层（v2.1）
 │   │   │   ├── base.py          # RepositoryContext 不可变上下文

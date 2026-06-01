@@ -23,7 +23,7 @@ from typing import Optional
 
 import aiosqlite
 
-from .agents import AgentRegistry, GitAgent, PlannerAgent, RepoAgent, StaticAgent
+from .agents import AgentRegistry, GitAgent, PlannerAgent, ReportAgent, RepoAgent, StaticAgent
 from .cloner import CloneError, RepoCloner
 from .config import config
 from .context import ContextManager
@@ -70,6 +70,11 @@ class Orchestrator:
         # --- v2.3: PlannerAgent（Phase 5，第一个协作 Agent）---
         self._planner = PlannerAgent()
         self._registry.register(self._planner)
+
+        # --- v2.4: ReportAgent（Phase 6，汇总报告 Agent）---
+        self._reporter_agent = ReportAgent()
+        self._registry.register(self._reporter_agent)
+
         self._registry.register(StaticAgent())
         self._registry.register(RepoAgent(llm))
         self._registry.register(GitAgent())
@@ -165,10 +170,13 @@ class Orchestrator:
         # Phase 5: PlannerAgent 先运行，制定分析计划写入 SharedMemory
         await self._run_planner(job_id, context)
 
-        # 三个分析 Agent 并行运行，可从 memory 读取 planner 产出
+        # 三个分析 Agent 并行运行，结果写入 SharedMemory
         static_result, repo_result, git_result, analyzer_durations = (
             await self._run_analyzers(job_id, context)
         )
+
+        # Phase 6: ReportAgent 从 SharedMemory 读取并生成汇总报告
+        report_result = await self._run_reporter(job_id, context)
 
         logger.debug(
             "流水线 [%s] Memory 使用: %d 条记录",
@@ -235,6 +243,34 @@ class Orchestrator:
             logger.warning("流水线 [%s] Planner 超时，使用默认计划", job_id)
         except Exception as exc:
             logger.warning("流水线 [%s] Planner 失败: %s", job_id, exc)
+
+    # ------------------------------------------------------------------
+    # ReportAgent 执行（Phase 6）
+    # ------------------------------------------------------------------
+
+    async def _run_reporter(
+        self, job_id: str, context,
+    ):
+        """运行 ReportAgent，从 SharedMemory 读取并生成汇总报告。
+
+        ReportAgent 失败不阻塞 Reporter 原有流程。
+        """
+        try:
+            result = await asyncio.wait_for(
+                self._reporter_agent.run(context),
+                timeout=30,
+            )
+            logger.info(
+                "流水线 [%s] ReportAgent 完成: agents=%s files=%d score=%.1f",
+                job_id, result.agents_available,
+                result.total_files_scanned, result.pylint_score or 0,
+            )
+            return result
+        except asyncio.TimeoutError:
+            logger.warning("流水线 [%s] ReportAgent 超时", job_id)
+        except Exception as exc:
+            logger.warning("流水线 [%s] ReportAgent 失败: %s", job_id, exc)
+        return None
 
     # ------------------------------------------------------------------
     # 分析器执行

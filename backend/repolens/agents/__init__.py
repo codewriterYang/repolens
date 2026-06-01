@@ -9,6 +9,7 @@ from .static_agent import StaticAgent
 from .repo_agent import RepoAgent
 from .git_agent import GitAgent
 from .planner_agent import PlannerAgent
+from .report_agent import ReportAgent
 from .registry import AgentRegistry
 
 __all__ = [
@@ -17,5 +18,6 @@ __all__ = [
     "RepoAgent",
     "GitAgent",
     "PlannerAgent",
+    "ReportAgent",
     "AgentRegistry",
 ]
