@@ -1,6 +1,6 @@
 [project]
 name = "repolens"
-version = "1.0.0"
+version = "2.0.0"
 description = "AI 驱动的仓库分析平台 — 代码质量、仓库意图、Git 活动、结构化洞察。"
 requires-python = ">=3.11"
 readme = "README.md"
