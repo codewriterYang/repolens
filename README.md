@@ -42,13 +42,32 @@ POST /api/analyze
 
 ## 快速开始
 
-### 环境要求
+### Docker 一键启动（推荐）
+
+```bash
+# 1. 配置 API Key
+cp .env.example .env
+# 编辑 .env，填入 LLM_API_KEY
+
+# 2. 启动
+docker compose up -d
+
+# 3. 访问
+# API 文档: http://localhost:8770/docs
+# 健康检查: http://localhost:8770/api/health
+```
+
+镜像内置 Python + Git + Pylint + Radon，无需手动安装任何依赖。
+
+### 本地开发启动
+
+#### 环境要求
 
 - Python 3.11+
 - Git 已安装并位于 PATH
 - 一个 OpenAI 兼容的 API Key（或其他提供 `/v1/chat/completions` 的厂商）
 
-### 1. 配置
+#### 1. 配置
 
 ```bash
 cd repolens
@@ -58,7 +77,7 @@ cp .env.example .env
 # 编辑 .env 填入你的 LLM_API_KEY
 ```
 
-### 2. 安装依赖
+#### 2. 安装依赖
 
 ```bash
 cd backend
@@ -66,13 +85,13 @@ pip install -e .        # 生产依赖
 pip install -e ".[dev]" # 含 pytest + ruff（开发用）
 ```
 
-### 3. 启动后端
+#### 3. 启动后端
 
 ```bash
 python -m uvicorn repolens.main:app --host 0.0.0.0 --port 8770 --reload
 ```
 
-### 4. 启动前端（可选）
+#### 4. 启动前端（可选）
 
 ```bash
 cd frontend

@@ -1,0 +1,21 @@
+services:
+  backend:
+    build:
+      context: .
+      args:
+        - HTTP_PROXY=http://host.docker.internal:7897
+        - HTTPS_PROXY=http://host.docker.internal:7897
+    container_name: repolens
+    ports:
+      - "8770:8770"
+    environment:
+      # 运行时代理（git clone / pip 等走代理）
+      - HTTP_PROXY=http://host.docker.internal:7897
+      - HTTPS_PROXY=http://host.docker.internal:7897
+      - NO_PROXY=localhost,127.0.0.1
+    env_file:
+      - .env
+    volumes:
+      # 持久化 SQLite 数据库
+      - ./data:/app/data
+    restart: unless-stopped
