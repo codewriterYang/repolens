@@ -110,9 +110,9 @@ class StaticAnalyzer:
 
         参数:
             repo_path: 克隆仓库的绝对路径。
-            strategy_mode: "full" | "sampled" | "fast"
-                - full: 完整 pylint + radon
-                - sampled: 核心文件 pylint + 全量 radon
+            strategy_mode: "full" | "focused" | "fast"
+            - full: 完整 pylint + radon
+                - focused: 核心文件 pylint + 全量 radon
                 - fast: 仅 radon cc（跳过 pylint）
 
         返回:
@@ -135,15 +135,15 @@ class StaticAnalyzer:
                 # fast 模式：不运行 pylint，仅 radon
                 pylint_files: list[str] = []
                 logger.info("StaticAnalyzer: fast 模式 — 跳过 pylint，仅 radon cc")
-            elif strategy_mode == "sampled":
-                # sampled 模式：排除测试文件
+            elif strategy_mode == "focused":
+                # focused 模式：排除测试文件
                 pylint_files = [
                     f for f in py_files
                     if not self._is_test_file(f)
                 ]
                 if len(pylint_files) < len(py_files):
                     logger.info(
-                        "StaticAnalyzer: sampled 模式 — pylint 目标 %d/%d 文件",
+                        "StaticAnalyzer: focused 模式 — pylint 目标 %d/%d 文件",
                         len(pylint_files), len(py_files),
                     )
             else:
@@ -238,7 +238,7 @@ class StaticAnalyzer:
 
     @staticmethod
     def _is_test_file(filepath: str) -> bool:
-        """检查是否为测试文件（用于 sampled 模式排除）。"""
+        """检查是否为测试文件（用于 focused 模式排除）。"""
         import os
         name = os.path.basename(filepath)
         # 文件名模式匹配

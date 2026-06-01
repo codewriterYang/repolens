@@ -275,10 +275,10 @@ class TestPlanningRules:
         plan = rules.evaluate({"file_count": 2000, "has_readme": True})
         assert plan.strategy.static_confidence == 50
 
-    def test_sampled_strategy_for_medium_repo(self, rules):
-        """501-1000 文件 → static = "sampled"。"""
+    def test_focused_strategy_for_medium_repo(self, rules):
+        """501-1000 文件 → static = "focused"。"""
         plan = rules.evaluate({"file_count": 750, "has_readme": True})
-        assert plan.strategy.static == "sampled"
+        assert plan.strategy.static == "focused"
         assert plan.strategy.static_confidence == 75
 
     def test_full_strategy_for_small_repo(self, rules):
@@ -288,9 +288,9 @@ class TestPlanningRules:
         assert plan.strategy.static_confidence == 100
 
     def test_boundary_1000_is_fast(self, rules):
-        """恰好 1000 文件 → sampled（>1000 才是 fast）。"""
+        """恰好 1000 文件 → focused（>1000 才是 fast）。"""
         plan = rules.evaluate({"file_count": 1000, "has_readme": True})
-        assert plan.strategy.static == "sampled"
+        assert plan.strategy.static == "focused"
 
     # ---------- repo/git 始终 full ----------
 
@@ -574,6 +574,29 @@ class TestReportAgent:
         assert "Plan Summary" in result.html_report
         assert "分析策略" in result.html_report
         assert "fast" in result.html_report
+        assert result.strategy == "fast"
+
+    def test_html_strategy_shows_full_mode_description(self, context):
+        """HTML 报告展示策略完整说明。"""
+        from repolens.agents import ReportAgent
+        from repolens.memory import SharedMemory
+        from repolens.schemas import AnalysisPlan, AnalysisStrategy
+
+        memory = SharedMemory()
+        plan = AnalysisPlan(
+            tasks=["static_analysis", "repo_analysis", "git_analysis"],
+            strategy=AnalysisStrategy(static="focused", repo="full", git="full"),
+        )
+        memory.set("analysis_plan", plan)
+
+        agent = ReportAgent(memory=memory)
+        import asyncio
+        result = asyncio.run(agent.run(context))
+
+        assert result.strategy == "focused"
+        assert "Focused Analysis" in result.html_report
+        assert "Confidence: 75%" in result.html_report
+        assert "Test files were excluded" in result.html_report
 
     def test_reads_memory_for_agent_results(self, context):
         """从 Memory 读取各 Agent 结果。"""

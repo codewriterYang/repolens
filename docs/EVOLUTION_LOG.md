@@ -658,7 +658,7 @@ HTML 报告新增 Plan Summary 区域：
 
 - **时间**：2026-06-01
 - **版本**：v2.6
-- **Commit**：`81db852`
+- **Commit**：`13ed8b9`
 
 ### 目标
 
@@ -682,7 +682,7 @@ Phase 7 的 DynamicPlanner 使用 skip-task 模式：大仓库跳过 StaticAgent
 | `AnalysisPlan.strategy` | `schemas.py` | 新增字段，替代 skip_tasks 为主决策方式 |
 | `PlanningRules` | `planning_rules.py` | 重写：从 remove-task 改为选择 strategy |
 | `StaticAgent` | `agents/static_agent.py` | `_read_analysis_strategy()` 读取 strategy，传递给 StaticAnalyzer |
-| `StaticAnalyzer` | `analyzers/static_analyzer.py` | `run()` 新增 `strategy_mode` 参数，支持 full/sampled/fast |
+| `StaticAnalyzer` | `analyzers/static_analyzer.py` | `run()` 新增 `strategy_mode` 参数，支持 full/focused/fast |
 | `ReportAgent` | `agents/report_agent.py` | `_plan_summary` 改为展示 strategy + 置信度 |
 | `Orchestrator` | `orchestrator.py` | 移除 skip 逻辑，始终执行所有 Agent |
 
@@ -691,7 +691,7 @@ Phase 7 的 DynamicPlanner 使用 skip-task 模式：大仓库跳过 StaticAgent
 | file_count | static 策略 | 行为 | 置信度 |
 |------------|------------|------|--------|
 | ≤ 500 | `full` | 完整 pylint + radon | 100% |
-| 501–1000 | `sampled` | 非测试文件 pylint + 全量 radon | 75% |
+| 501–1000 | `focused` | 非测试文件 pylint + 全量 radon | 75% |
 | > 1000 | `fast` | 仅 radon cc | 50% |
 
 repo / git 始终 `full`。
@@ -730,6 +730,90 @@ v2.6:
 - 用户永远看到各维度的数据 + 置信度标注
 - Planner 价值提升：从"开关"升级为"智能调速器"
 - 规则引擎可扩展：新增策略模式只需加 `elif` 分支
+
+---
+
+## Phase 8.1 — Strategy Refinement（命名优化 + 可解释性增强）
+
+- **时间**：2026-06-01
+- **版本**：v2.6.1
+- **Commit**：`（待提交）`
+
+### 目标
+
+不改核心逻辑，仅做命名优化和前端可解释性提升，让用户看到报告时能明确理解当前策略含义。
+
+### 修改
+
+| 变更 | 说明 |
+|------|------|
+| `sampled` → `focused` | 全项目重命名。当前实现是排除测试文件而非随机采样，`focused` 更准确 |
+| `ReportResult.strategy` | 新增字段，暴露当前 static 策略供前端读取 |
+| `ReportJson.strategy` | 新增字段，打通 Reporter → API 数据链路 |
+| HTML 策略展示 | Reporter + ReportAgent 双端展示：三种模式各有专属英文名称 + 详细说明 |
+| 前端 strategy badge | `ReportViewer` 非 full 模式时在标题栏显示策略标签 |
+| samples 数据实测 | `verify_samples.py` 脚本实测文件数，README 更新为准确数据 |
+
+### 测试样本优化
+
+实测原始 README 声称的文件数全部不准确（pytest 声称 600 实测 270）。
+更新为三种模式各一个代表：
+
+| 模式 | 仓库 | 实测 .py 文件数 |
+|------|------|----------------|
+| full | pallets/flask | ~80 |
+| focused | sqlalchemy/sqlalchemy | ~670 |
+| fast | tiangolo/fastapi | ~1120 |
+
+新增 `scripts/verify_samples.py` 可复用验证脚本。
+
+### HTML 展示示例
+
+**ReportAgent Plan Summary（iframe 内）**：
+```
+📊 分析策略
+   Strategy: Focused Analysis · Confidence: 75%
+   → Test files were excluded to improve performance.
+     Production code received priority analysis.
+   Repo: full · Git: full
+```
+
+**Reporter 报告（前端 iframe 主内容）**：
+```
+分析策略
+Focused Analysis · 置信度 75%
+Test files excluded. Production code received priority analysis.
+```
+
+### 修改文件
+
+| 文件 | 变更 |
+|------|------|
+| `schemas.py` | sampled→focused；ReportResult/ReportJson 新增 strategy |
+| `planning_rules.py` | _SAMPLED_THRESHOLD→_FOCUSED_THRESHOLD；全量重命名 |
+| `static_analyzer.py` | 注释/日志 sampled→focused |
+| `report_agent.py` | strategy 写入 ReportResult；HTML 策略展示优化 |
+| `reporter.py` | render() 新增 strategy 参数；新增 `_html_strategy()` 方法；`_build_html` 增加策略区域 |
+| `orchestrator.py` | 传递 plan.strategy 给 Reporter |
+| `contracts.ts` | ReportJson 新增 strategy 字段 |
+| `ReportViewer.tsx` | 非 full 模式时标题栏显示策略标签 |
+| `test_agent_architecture.py` | 全量重命名 + 新增 strategy 验证测试 |
+| `samples/README.md` | 数据实测更新，三种模式各一个代表 |
+| `scripts/verify_samples.py` | 新增，可复用实测验证脚本 |
+| `EVOLUTION_LOG.md` | Phase 8 表项更新 + 新增 Phase 8.1 条目 |
+
+### 测试结果
+
+```
+55/55 passed
+```
+
+### 收益
+
+- 命名准确：`focused` 如实描述"聚焦生产代码"行为
+- 前端可见：用户打开报告即可看到 Strategy 标签
+- HTML 可读：三种模式的英文名称+说明让非技术用户也能理解
+- 零核心逻辑改动：评分、调度、规则引擎完全不受影响
 
 ---
 

@@ -45,7 +45,14 @@ export function ReportViewer({ report }: ReportViewerProps) {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
-            <span>分析报告</span>
+            <div className="flex items-center gap-2">
+              <span>分析报告</span>
+              {report.strategy && report.strategy !== 'full' && (
+                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+                  Strategy: {report.strategy}
+                </span>
+              )}
+            </div>
             <span className={`rounded-full px-3 py-1 text-xs font-semibold bg-primary/10 ${scoreColor(report.health_score)}`}>
               健康度 {report.health_score}
             </span>

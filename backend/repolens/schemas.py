@@ -224,20 +224,20 @@ class AnalysisStrategy(BaseModel):
 
     static 策略:
         - "full": 完整 pylint + radon（≤500 文件）
-        - "sampled": 核心文件 pylint + 全量 radon（501-1000 文件）
+        - "focused": 核心文件 pylint + 全量 radon（501-1000 文件）
         - "fast": 仅 radon cc 快速扫描（>1000 文件）
 
     repo / git: 始终 "full"
     """
 
-    static: str = Field(default="full", description="full | sampled | fast")
+    static: str = Field(default="full", description="full | focused | fast")
     repo: str = Field(default="full", description="repo 始终保持 full")
     git: str = Field(default="full", description="git 始终保持 full")
 
     @property
     def static_confidence(self) -> int:
         """静态分析的置信度百分比。"""
-        return {"full": 100, "sampled": 75, "fast": 50}.get(self.static, 100)
+        return {"full": 100, "focused": 75, "fast": 50}.get(self.static, 100)
 
 
 class AnalysisPlan(BaseModel):
@@ -254,7 +254,7 @@ class AnalysisPlan(BaseModel):
     )
     strategy: AnalysisStrategy = Field(
         default_factory=AnalysisStrategy,
-        description="各 Agent 的执行策略（full/sampled/fast）",
+        description="各 Agent 的执行策略（full/focused/fast）",
     )
     skipped_tasks: list[str] = Field(
         default_factory=list,
@@ -289,6 +289,12 @@ class ReportResult(BaseModel):
     # Agent 状态
     agents_available: list[str] = Field(default_factory=list)
 
+    # 分析策略
+    strategy: str = Field(
+        default="full",
+        description="当前 static 分析策略: full | focused | fast",
+    )
+
     # HTML 报告（可折叠结构）
     html_report: str = Field(default="", description="自包含 HTML 报告")
 
@@ -318,6 +324,10 @@ class ReportJson(BaseModel):
     git_analysis: Optional[GitResult] = None
     recommendations: list[Recommendation] = Field(default_factory=list)
     html_report: str = ""
+    strategy: str = Field(
+        default="full",
+        description="当前分析策略: full | focused | fast",
+    )
     total_duration_ms: int = 0
     created_at: str = Field(
         default_factory=lambda: datetime.now().strftime("%Y-%m-%d %H:%M:%S")

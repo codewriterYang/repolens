@@ -1,12 +1,12 @@
 """PlanningRules — 分析策略规则引擎。
 
 Phase 8: 从 skip-task 升级为 strategy 模式。
-基于仓库特征选择各 Agent 的执行策略（full/sampled/fast），
+基于仓库特征选择各 Agent 的执行策略（full/focused/fast），
 所有 Agent 始终执行，不再跳过。
 
 规则（按优先级）：
 1. file_count > 1000 → static = "fast"（仅 radon cc）
-2. file_count 501-1000 → static = "sampled"（核心文件 pylint + 全量 radon）
+2. file_count 501-1000 → static = "focused"（核心文件 pylint + 全量 radon）
 3. file_count ≤ 500 → static = "full"（完整 pylint + radon）
 4. repo / git → 始终 "full"
 """
@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 _ALL_TASKS = ["static_analysis", "repo_analysis", "git_analysis"]
 
 # 策略阈值
-_SAMPLED_THRESHOLD = 500
+_FOCUSED_THRESHOLD = 500
 _FAST_THRESHOLD = 1000
 
 
@@ -59,15 +59,15 @@ class PlanningRules:
                 f"fast 模式：仅 radon cc 扫描"
             )
             priority = "high"
-        elif file_count > _SAMPLED_THRESHOLD:
-            static_strategy = "sampled"
+        elif file_count > _FOCUSED_THRESHOLD:
+            static_strategy = "focused"
             reasons["static"] = (
-                f"大仓库 ({file_count} files, {_SAMPLED_THRESHOLD}-{_FAST_THRESHOLD})，"
-                f"sampled 模式：核心文件 pylint + 全量 radon"
+                f"大仓库 ({file_count} files, {_FOCUSED_THRESHOLD}-{_FAST_THRESHOLD})，"
+                f"focused 模式：核心文件 pylint + 全量 radon"
             )
         else:
             reasons["static"] = (
-                f"小仓库 ({file_count} files ≤ {_SAMPLED_THRESHOLD})，"
+                f"小仓库 ({file_count} files ≤ {_FOCUSED_THRESHOLD})，"
                 f"full 模式：完整 pylint + radon"
             )
 

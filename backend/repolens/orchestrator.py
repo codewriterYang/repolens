@@ -200,6 +200,7 @@ class Orchestrator:
             repo_result=repo_result,
             git_result=git_result,
             pipeline_start=pipeline_start,
+            strategy=plan.strategy.static if plan and hasattr(plan, "strategy") else "full",
         )
         logger.info(
             "流水线 [%s] 报告生成 (%.1fs) score=%d 建议=%d",

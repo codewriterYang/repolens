@@ -71,12 +71,18 @@ class ReportAgent(BaseAgent):
         else:
             logger.warning("ReportAgent: SharedMemory 未注入，报告将为空")
 
+        # 提取当前 static 策略
+        current_strategy = "full"
+        if plan is not None and hasattr(plan, "strategy") and plan.strategy is not None:
+            current_strategy = plan.strategy.static
+
         # 构建 ReportResult
         result = ReportResult(
             repo_name=context.repo_name,
             repo_url=context.repo_url,
             analysis_id=context.analysis_id,
             agents_available=agents_available,
+            strategy=current_strategy,
 
             # 静态分析摘要
             total_files_scanned=static.total_files_scanned if static else 0,
@@ -206,10 +212,12 @@ function toggle(id) {{
 <footer>由 RepoLens ReportAgent 生成 — {now_str}</footer>
 </div>
 <script>
-// 向父窗口报告实际内容高度，避免 sandbox 限制 contentDocument 读取
-// 使用 DOMContentLoaded + setTimeout 确保布局完全计算完成
+// 向父窗口报告实际内容高度。
+// 持续重发（最多 20 次/6 秒），确保切回页面时也能收到。
 document.addEventListener('DOMContentLoaded', function() {{
-  setTimeout(function() {{
+  var count = 0;
+  var maxRetries = 20;
+  var report = function() {{
     var h = Math.max(
       document.body.scrollHeight,
       document.body.offsetHeight,
@@ -220,7 +228,10 @@ document.addEventListener('DOMContentLoaded', function() {{
     if (window.parent && window.parent !== window) {{
       window.parent.postMessage({{ type: 'repolens-height', height: h }}, '*');
     }}
-  }}, 100);
+    count++;
+    if (count < maxRetries) setTimeout(report, 300);
+  }};
+  setTimeout(report, 100);
 }});
 </script>
 </body>
@@ -238,18 +249,32 @@ document.addEventListener('DOMContentLoaded', function() {{
         lines.append('<p style="font-weight:600;margin-bottom:6px;">📋 Plan Summary</p>')
         lines.append(f'<p>执行任务: {", ".join(plan.tasks)}</p>')
 
-        # Phase 8: 展示 strategy 和 confidence
+        # Phase 8.1: 展示 strategy 和 confidence（详细说明）
         if hasattr(plan, 'strategy') and plan.strategy is not None:
             strategy = plan.strategy
+            mode = strategy.static
+            conf = strategy.static_confidence
+            mode_labels = {"full": "Full Analysis", "focused": "Focused Analysis", "fast": "Fast Analysis"}
+            mode_descs = {
+                "full": "All source files were analyzed with full pylint + radon.",
+                "focused": "Test files were excluded to improve performance. Production code received priority analysis.",
+                "fast": "Complexity analysis executed. Pylint analysis skipped for performance reasons.",
+            }
+            label = mode_labels.get(mode, mode)
+            desc = mode_descs.get(mode, "")
+
             lines.append('<div style="margin-top:6px;">')
             lines.append('<p style="font-weight:600;font-size:12px;">📊 分析策略</p>')
             lines.append(
                 f'<p style="font-size:11px;">'
-                f'静态分析: {strategy.static}（置信度 {strategy.static_confidence}%） · '
-                f'仓库分析: {strategy.repo} · '
-                f'Git 分析: {strategy.git}'
+                f'Strategy: {label} · Confidence: {conf}%'
                 f'</p>'
             )
+            if desc:
+                lines.append(
+                    f'<p style="font-size:10px;color:#64748b;">'
+                    f'→ {desc}</p>'
+                )
             # 显示 strategy 选择理由
             if plan.reasons:
                 for key, reason in plan.reasons.items():
@@ -257,6 +282,7 @@ document.addEventListener('DOMContentLoaded', function() {{
                         f'<p style="font-size:10px;color:#64748b;">'
                         f'→ {reason}</p>'
                     )
+            lines.append(f'<p style="font-size:9px;color:#94a3b8;">Repo: {strategy.repo} · Git: {strategy.git}</p>')
             lines.append('</div>')
 
         lines.append(f'<p style="font-size:11px;color:#64748b;">优先级: {plan.priority}</p>')
