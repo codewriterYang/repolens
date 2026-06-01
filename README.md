@@ -38,7 +38,7 @@ POST /api/analyze
 
 三个 Agent 互相独立 — 任何一个失败都不会阻碍其他 Agent。Reporter 优雅处理缺失结果，部分结果在流水线运行期间可通过 `GET /api/status/{job_id}` 获取。
 
-> 📖 更多文档：[架构设计](./ARCHITECTURE.md) · [工作流程详解](./WORKFLOW.md) · [技术选型](./DECISIONS.md) · [演进日志](./docs/EVOLUTION_LOG.md)
+> 📖 文档导航：[架构设计](./ARCHITECTURE.md) · [工作流程](./WORKFLOW.md) · [技术选型](./DECISIONS.md) · [演进日志](./docs/EVOLUTION_LOG.md) · [架构图](./docs/architecture/) · [ADR](./docs/adr/) · [测试](./docs/testing/) · [案例](./docs/case-studies/)
 
 ## 快速开始
 
@@ -199,6 +199,29 @@ repolens/
 └── README.md
 ```
 
+## Agent 工作流
+
+```
+POST /api/analyze
+  → Clone → ContextManager → MemoryManager
+  → PlannerAgent (strategy: full/focused/fast)
+  → StaticAgent ╗
+  → RepoAgent   ║ 并行执行
+  → GitAgent    ╝
+  → Reporter → ReportJson → SQLite
+  → GET /api/report/{id}
+```
+
+### 策略引擎
+
+仓库规模决定 StaticAgent 的执行深度（所有 Agent 始终执行，不跳过）：
+
+| 文件数 | 策略 | 置信度 | 行为 |
+|--------|------|--------|------|
+| ≤ 500 | full | 100% | 完整 pylint + radon |
+| 501–1000 | focused | 75% | 排除测试文件 pylint + 全量 radon |
+| > 1000 | fast | 50% | 仅 radon cc |
+
 ## 设计原则
 
 - **清晰优先于复杂** — 单文件分析器、扁平包结构、无依赖注入框架
@@ -206,6 +229,21 @@ repolens/
 - **自包含输出** — HTML 报告零外部依赖（无 CDN、无 JS 框架）
 - **跨平台兼容** — 子进程通过 `subprocess.run` + `asyncio.to_thread` 执行，兼容 Windows/Linux/macOS
 - **可配置超时** — 分析器级和流水线级超时防止失控任务
+
+## 文档导航
+
+| 文档 | 说明 |
+|------|------|
+| [ARCHITECTURE.md](./ARCHITECTURE.md) | 系统架构设计 |
+| [WORKFLOW.md](./WORKFLOW.md) | 完整分析工作流程 |
+| [DECISIONS.md](./DECISIONS.md) | 技术选型说明 |
+| [docs/EVOLUTION_LOG.md](./docs/EVOLUTION_LOG.md) | 项目演进日志 |
+| [docs/architecture/](./docs/architecture/) | 架构图（Mermaid） |
+| [docs/adr/](./docs/adr/) | 架构决策记录（ADR） |
+| [docs/testing/](./docs/testing/) | 测试报告 |
+| [docs/case-studies/](./docs/case-studies/) | 真实案例分析 |
+| [docs/performance/](./docs/performance/) | 性能基准 |
+| [samples/](./samples/) | 推荐测试仓库 |
 
 ## 配置说明
 

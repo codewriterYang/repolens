@@ -737,7 +737,7 @@ v2.6:
 
 - **时间**：2026-06-01
 - **版本**：v2.6.1
-- **Commit**：`（待提交）`
+- **Commit**：`ace58b7`
 
 ### 目标
 
@@ -814,6 +814,80 @@ Test files excluded. Production code received priority analysis.
 - 前端可见：用户打开报告即可看到 Strategy 标签
 - HTML 可读：三种模式的英文名称+说明让非技术用户也能理解
 - 零核心逻辑改动：评分、调度、规则引擎完全不受影响
+
+---
+
+## Phase 9 — Engineering Completion（工程化收尾）
+
+- **时间**：2026-06-01
+- **版本**：v2.6.2
+- **Commit**：`（待提交）`
+
+### 目标
+
+核心功能已全部完成。本阶段仅补充文档和发布清单，让项目达到 GitHub Release Ready 状态。
+禁止修改核心架构、Agent、Planner、评分逻辑。
+
+### 新增文档
+
+| 文档 | 说明 |
+|------|------|
+| `docs/architecture/system-overview.md` | 系统架构总览，含 Mermaid 图 |
+| `docs/architecture/agent-flow.md` | Agent 协作流程，含时序图 + Memory Key 约定 |
+| `docs/adr/ADR-001-agent-architecture.md` | 为什么从传统流程改为 Multi-Agent |
+| `docs/adr/ADR-002-shared-memory.md` | 为什么采用 SharedMemory |
+| `docs/adr/ADR-003-strategy-planning.md` | 为什么从 Skip-Based 升级到 Strategy-Based |
+| `docs/testing/TEST_REPORT.md` | 55 测试覆盖报告 |
+| `docs/case-studies/case-flask-full.md` | pallets/flask full 策略分析案例 |
+| `docs/performance/PERFORMANCE.md` | 性能基准模板（待实测填充） |
+| `docs/RELEASE_CHECKLIST.md` | 发布准备检查清单 |
+
+### 更新文档
+
+| 文件 | 变更 |
+|------|------|
+| `README.md` | 新增 Agent 工作流、策略引擎、文档导航章节 |
+| `docs/EVOLUTION_LOG.md` | Phase 8.1 commit hash 更新 + 新增 Phase 9 条目 |
+
+### 文档目录树
+
+```
+docs/
+├── EVOLUTION_LOG.md
+├── RELEASE_CHECKLIST.md
+├── architecture/
+│   ├── system-overview.md
+│   └── agent-flow.md
+├── adr/
+│   ├── ADR-001-agent-architecture.md
+│   ├── ADR-002-shared-memory.md
+│   └── ADR-003-strategy-planning.md
+├── testing/
+│   └── TEST_REPORT.md
+├── case-studies/
+│   └── case-flask-full.md
+└── performance/
+    └── PERFORMANCE.md
+```
+
+### 测试结果
+
+```
+55/55 passed
+```
+
+### 发布就绪状态
+
+```
+✅ 核心功能完整
+✅ 55 单元测试全部通过
+✅ 3 个 ADR 记录所有关键架构决策
+✅ 架构图（Mermaid）覆盖整体 + Agent 流程
+✅ 真实案例分析
+✅ 性能基准模板
+✅ README 可从零启动项目
+✅ 发布检查清单全项勾选
+```
 
 ---
 
