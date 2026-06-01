@@ -16,7 +16,7 @@ FastAPI 异步服务，提供仓库分析流水线的 REST API。
 cd backend
 
 # 1. 安装依赖
-pip install -r requirements.txt
+pip install -e ".[dev]"
 
 # 2. 配置环境变量（项目根目录）
 cp ../.env.example ../.env
@@ -59,7 +59,6 @@ backend/
 │       ├── static_analyzer.py   # pylint + radon 静态分析
 │       ├── repo_analyzer.py     # README + 目录树 + LLM 仓库分析
 │       └── git_analyzer.py      # Git 活动分析（提交/贡献者/CI）
-├── requirements.txt
 ├── pyproject.toml
 └── README.md
 ```

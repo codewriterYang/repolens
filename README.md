@@ -62,13 +62,8 @@ cp .env.example .env
 
 ```bash
 cd backend
-pip install -r requirements.txt
-```
-
-开发工具可选安装（lint/测试）：
-
-```bash
-pip install -r requirements.txt pytest pytest-asyncio ruff
+pip install -e .        # 生产依赖
+pip install -e ".[dev]" # 含 pytest + ruff（开发用）
 ```
 
 ### 3. 启动后端
@@ -153,19 +148,19 @@ repolens/
 │   │   ├── llm_service.py     # OpenAI 兼容 LLM 客户端
 │   │   ├── agents/              # Agent 层（v2.0）
 │   │   │   ├── base.py          # BaseAgent 抽象基类
+│   │   │   ├── registry.py      # AgentRegistry 注册中心
+│   │   │   ├── planner_agent.py # PlannerAgent（策略制定，Phase 5）
 │   │   │   ├── static_agent.py  # 封装 StaticAnalyzer
 │   │   │   ├── repo_agent.py    # 封装 RepoAnalyzer
 │   │   │   ├── git_agent.py     # 封装 GitAnalyzer
-│   │   │   ├── planner_agent.py # PlannerAgent（Phase 5 协作）
-│   │   ├── report_agent.py  # ReportAgent（Phase 6 汇总）
-│   │   │   └── registry.py      # AgentRegistry 注册中心
+│   │   │   └── report_agent.py  # ReportAgent（汇总报告，Phase 6）
 │   │   ├── context/             # Context 层（v2.1）
 │   │   │   ├── base.py          # RepositoryContext 不可变上下文
 │   │   │   ├── repository_context.py  # 上下文工厂函数
 │   │   │   └── context_manager.py     # ContextManager 生命周期
 │   │   ├── memory/              # Memory 层（v2.2）
 │   │   │   ├── base.py          # SharedMemory 线程安全 KV 存储
-│   │   │   ├── shared_memory.py # 辅助函数（前缀筛选等）
+│   │   │   ├── shared_memory.py # 辅助函数
 │   │   │   └── memory_manager.py     # MemoryManager 生命周期
 │   │   ├── planner/             # Planner 层（v2.5，动态策略引擎）
 │   │   │   ├── repository_profiler.py # 仓库特征分析
@@ -175,7 +170,6 @@ repolens/
 │   │       ├── static_analyzer.py  # Pylint + Radon
 │   │       ├── repo_analyzer.py    # README + 目录树 + LLM
 │   │       └── git_analyzer.py     # Git 活动 + CI/CD
-│   ├── requirements.txt
 │   ├── pyproject.toml
 │   └── README.md
 ├── frontend/                  # React + TypeScript 界面

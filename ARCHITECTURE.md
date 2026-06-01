@@ -224,8 +224,8 @@ Phase 7 引入 DynamicPlanner：规则引擎根据仓库特征（文件数、REA
 ### GitAnalyzer（Git 分析器）
 
 - **目的**：Git 历史活动、贡献者统计、CI/CD 检测
-- **工具**：4 个 git 子进程（`rev-list`、`shortlog`、`log`、`log --name-only`）
-- **策略**：所有子进程通过 `asyncio.gather` 并发运行
+- **工具**：4 个 git 子进程（`rev-list`、`shortlog`、`log`、`log --name-only`）+ 1 个文件系统 CI 检查
+- **策略**：所有 5 个任务通过 `asyncio.gather` 并发运行
 - **产出**：`GitResult`，包含提交数、贡献者、活动时间线、活跃文件、CI/CD 状态
 - **降级**：每个子进程独立捕获异常；部分数据即可用
 

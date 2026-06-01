@@ -891,20 +891,10 @@ docs/
 
 ---
 
-## 后续规划
+## 未来方向
 
-### Phase 8 — 深入协作
-
-引入协调 Agent（Orchestrator Agent），Agent 间可传递分析结果。例如 StaticAgent 发现高风险文件后通知 GitAgent 聚焦分析该文件的变更历史。
-
-### Phase 5 — Security Agent
-
-新增安全扫描 Agent，集成 Bandit / Semgrep，分析依赖漏洞和代码安全风险。
-
-### Phase 6 — Code Review Agent
-
-LLM 驱动的代码审查 Agent，对高风险文件和函数进行深度语义分析，生成具体重构建议。
-
-### Phase 7 — Multi-Agent Repository Intelligence Platform
-
-完整的多 Agent 仓库智能分析平台，支持多语言（JS/TS/Rust/Go）、多仓库对比、趋势追踪、Webhook 触发。
+- Agent 深度协作（StaticAgent 发现热点 → GitAgent 聚焦变更历史）
+- 安全扫描 Agent（Bandit / Semgrep）
+- LLM 代码审查 Agent（高风险文件语义审查 + 重构建议）
+- 多语言支持（JS/TS/Rust/Go）
+- 多仓库对比 + 趋势追踪 + Webhook 触发

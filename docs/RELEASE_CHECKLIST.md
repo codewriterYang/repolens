@@ -36,7 +36,7 @@
 
 - [x] `LICENSE` — MIT License
 - [x] `.env.example` — 环境变量模板
-- [x] `backend/requirements.txt` — Python 依赖
+- [x] `backend/pyproject.toml` — Python 依赖管理
 - [x] `backend/pyproject.toml` — 项目元数据
 - [x] `frontend/package.json` — 前端依赖
 
