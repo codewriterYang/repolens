@@ -24,11 +24,9 @@ from typing import Optional
 import aiosqlite
 
 from .agents import AgentRegistry, GitAgent, RepoAgent, StaticAgent
-from .analyzers.git_analyzer import GitAnalyzer
-from .analyzers.repo_analyzer import RepoAnalyzer
-from .analyzers.static_analyzer import StaticAnalyzer
 from .cloner import CloneError, RepoCloner
 from .config import config
+from .context import ContextManager
 from .db import save_partial_results, save_report, update_job_status
 from .llm_service import LLMService
 from .reporter import Reporter
@@ -71,6 +69,11 @@ class Orchestrator:
         self._registry.register(StaticAgent())
         self._registry.register(RepoAgent(llm))
         self._registry.register(GitAgent())
+
+        # --- v2.1: Context 层 ---
+        # ContextManager 负责创建和校验分析上下文，
+        # Agent 通过 RepositoryContext 获取所需信息。
+        self._ctx_manager = ContextManager()
 
         logger.debug(
             "Orchestrator 已注册 %d 个 Agent: %s",
@@ -143,10 +146,12 @@ class Orchestrator:
             job_id, time.monotonic() - t0, repo_path,
         )
 
-        # --- 阶段二：并行分析 --------------------------------------------
+        # --- 阶段二：并行分析（v2.1: 通过 Context 传递） ----------------
         await self._set_status(job_id, JobStatus.ANALYZING, 20, "正在分析代码...")
+        # 创建分析上下文，Agent 通过 Context 获取所需信息
+        context = self._ctx_manager.create(repo_url, repo_path, job_id)
         static_result, repo_result, git_result, analyzer_durations = (
-            await self._run_analyzers(job_id, repo_path, repo_url)
+            await self._run_analyzers(job_id, context)
         )
         logger.info(
             "流水线 [%s] 分析器完成: static=%s repo=%s git=%s 耗时=%s",
@@ -188,21 +193,25 @@ class Orchestrator:
     # ------------------------------------------------------------------
 
     async def _run_analyzers(
-        self, job_id: str, repo_path: str, repo_url: str,
+        self, job_id: str, context,
     ) -> tuple[
         Optional[StaticResult],
         Optional[RepoResult],
         Optional[GitResult],
         dict[str, float],
     ]:
-        """并行运行全部三个分析器，各自有独立超时。
+        """并行运行全部三个 Agent，各自有独立超时。
 
-        每个分析器的失败独立 — 一个失败不会阻碍其他分析器。
+        每个 Agent 的失败独立 — 一个失败不会阻碍其他 Agent。
         Reporter 优雅处理缺失的结果。
 
-        返回：
+        参数:
+            job_id: 分析任务 ID。
+            context: RepositoryContext，通过 AgentRegistry 传递给各 Agent。
+
+        返回:
             (static_result, repo_result, git_result, durations_dict) 元组。
-            durations_dict 映射分析器名称 → 耗时（秒）。
+            durations_dict 映射 Agent 名称 → 耗时（秒）。
         """
         durations: dict[str, float] = {}
 
@@ -211,7 +220,7 @@ class Orchestrator:
             agent = self._registry.get("static")
             try:
                 result = await asyncio.wait_for(
-                    agent.run(repo_path), timeout=_TIMEOUT_STATIC,
+                    agent.run(context), timeout=_TIMEOUT_STATIC,
                 )
                 durations["static"] = time.monotonic() - t0
                 if result.error:
@@ -241,7 +250,7 @@ class Orchestrator:
             agent = self._registry.get("repo")
             try:
                 result = await asyncio.wait_for(
-                    agent.run(repo_path, repo_url=repo_url), timeout=_TIMEOUT_REPO,
+                    agent.run(context), timeout=_TIMEOUT_REPO,
                 )
                 durations["repo"] = time.monotonic() - t0
                 if result.error:
@@ -271,7 +280,7 @@ class Orchestrator:
             agent = self._registry.get("git")
             try:
                 result = await asyncio.wait_for(
-                    agent.run(repo_path), timeout=_TIMEOUT_GIT,
+                    agent.run(context), timeout=_TIMEOUT_GIT,
                 )
                 durations["git"] = time.monotonic() - t0
                 if result.error:

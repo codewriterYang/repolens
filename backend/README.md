@@ -41,6 +41,16 @@ backend/
 │   ├── reporter.py          # HTML 报告生成器（评分 + 建议 + 可视化）
 │   ├── cloner.py            # Git 仓库克隆与清理
 │   ├── llm_service.py       # OpenAI 兼容 LLM 客户端（含缓存）
+│   ├── agents/               # Agent 层（v2.0，分析器的统一包装）
+│   │   ├── base.py           # BaseAgent 抽象基类
+│   │   ├── static_agent.py   # 封装 StaticAnalyzer
+│   │   ├── repo_agent.py     # 封装 RepoAnalyzer
+│   │   ├── git_agent.py      # 封装 GitAnalyzer
+│   │   └── registry.py       # AgentRegistry 注册与调度
+│   ├── context/              # Context 层（v2.1，分析上下文管理）
+│   │   ├── base.py           # RepositoryContext 不可变上下文
+│   │   ├── repository_context.py # 上下文工厂函数
+│   │   └── context_manager.py    # ContextManager 生命周期
 │   └── analyzers/
 │       ├── static_analyzer.py   # pylint + radon 静态分析
 │       ├── repo_analyzer.py     # README + 目录树 + LLM 仓库分析

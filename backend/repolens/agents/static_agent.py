@@ -1,15 +1,19 @@
 """StaticAgent — StaticAnalyzer 的 Agent 包装层。
 
 保持原有分析逻辑不变，仅增加统一的 BaseAgent 接口。
+v2.1: run() 入参升级为 RepositoryContext。
 """
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .base import BaseAgent
 from ..analyzers.static_analyzer import StaticAnalyzer
 from ..schemas import StaticResult
+
+if TYPE_CHECKING:
+    from ..context import RepositoryContext
 
 
 class StaticAgent(BaseAgent):
@@ -20,14 +24,14 @@ class StaticAgent(BaseAgent):
     def __init__(self) -> None:
         self._analyzer = StaticAnalyzer()
 
-    async def run(self, repo_path: str, **kwargs: Any) -> StaticResult:
+    async def run(self, context: RepositoryContext, **kwargs: Any) -> StaticResult:
         """执行静态代码分析。
 
         参数:
-            repo_path: 克隆仓库的绝对路径。
+            context: 不可变分析上下文，从中提取 repo_path。
 
         返回:
             StaticResult 包含 pylint 评分、圈复杂度热点、
             文件风险摘要等。
         """
-        return await self._analyzer.run(repo_path)
+        return await self._analyzer.run(context.repo_path)

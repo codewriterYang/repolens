@@ -77,20 +77,20 @@ class BaseAgent(ABC):
     name: str
 
     @abstractmethod
-    async def run(self, repo_path: str, **kwargs: Any) -> Any:
+    async def run(self, context: RepositoryContext, **kwargs: Any) -> Any:
         ...
 ```
 
 ### Agent 实现
 
-| Agent | 封装的分析器 | 额外参数 |
-|-------|-------------|---------|
-| `StaticAgent` | `StaticAnalyzer` | 无 |
-| `RepoAgent` | `RepoAnalyzer` | `repo_url`（通过 kwargs） |
-| `GitAgent` | `GitAnalyzer` | 无 |
+| Agent | 封装的分析器 | 从 Context 获取 |
+|-------|-------------|----------------|
+| `StaticAgent` | `StaticAnalyzer` | `context.repo_path` |
+| `RepoAgent` | `RepoAnalyzer` | `context.repo_path`, `context.repo_url` |
+| `GitAgent` | `GitAnalyzer` | `context.repo_path` |
 
 每个 Agent 是纯包装层 — 内部直接委托给对应 Analyzer，
-不修改原有分析逻辑。
+不修改原有分析逻辑。v2.1 起通过 `RepositoryContext` 获取参数。
 
 ### AgentRegistry 设计
 
@@ -99,12 +99,53 @@ AgentRegistry
 ├── register(agent)     # 按 name 注册 Agent
 ├── get(name) → Agent   # 按名称获取
 ├── list() → [str]      # 列出已注册名称
-└── run_all(tasks)      # 并行调度多个 Agent
+└── run_all(tasks, ctx) # 并行调度多个 Agent（统一传递 Context）
 ```
 
 Orchestrator 通过 AgentRegistry 获取和调度 Agent，
 不再直接持有分析器实例。这为后续 Agent 热插拔、
 动态启停提供了基础。
+
+## Context 层（v2.1）
+
+v2.1 引入了 Context 抽象层，在 Agent 和 Orchestrator 之间
+插入不可变的上下文对象，解耦参数传递。
+
+### RepositoryContext
+
+```python
+@dataclass(frozen=True)
+class RepositoryContext:
+    repo_url: str        # 原始仓库 URL
+    repo_path: str       # 克隆后的本地路径
+    repo_name: str       # 仓库名（从 URL 提取）
+    analysis_id: str     # 唯一 job_id
+    started_at: datetime # 分析启动时间
+```
+
+`frozen=True` 保证上下文在分析过程中不可被任何 Agent 修改。
+
+### ContextManager
+
+```
+ContextManager
+├── create(repo_url, repo_path, job_id) → RepositoryContext
+├── validate(ctx)                        → 校验完整性
+└── create_and_validate(...)             → 创建 + 校验
+```
+
+Orchestrator 在克隆完成后调用 `ContextManager.create()` 构建上下文，
+通过 AgentRegistry 统一传递给三个 Agent。
+
+### 架构层次
+
+```
+Orchestrator
+  └─→ ContextManager.create()  ──→ RepositoryContext
+       └─→ AgentRegistry.get("static")  ──→ StaticAgent.run(ctx)
+           AgentRegistry.get("repo")    ──→ RepoAgent.run(ctx)
+           AgentRegistry.get("git")     ──→ GitAgent.run(ctx)
+```
 
 ---
 

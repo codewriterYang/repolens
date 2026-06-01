@@ -20,13 +20,14 @@ RepoLens 对克隆的仓库并行运行三个 Agent（静态/仓库/Git），通
 POST /api/analyze
        │
        ▼
-   Orchestrator（异步编排 + AgentRegistry）
+   Orchestrator（异步编排 + AgentRegistry + ContextManager）
        │
        ├──▶ git clone（300s 超时）
+       │     └─→ ContextManager.create()
        │
-       ├──▶ StaticAgent ──┐
-       ├──▶ RepoAgent   ──┼── 并行（AgentRegistry 调度）
-       └──▶ GitAgent    ──┘
+       ├──▶ StaticAgent ←─┐
+       ├──▶ RepoAgent   ←─┼── Context 统一传递
+       └──▶ GitAgent    ←─┘
               │
               ▼
           Reporter（报告生成）
@@ -37,7 +38,7 @@ POST /api/analyze
 
 三个 Agent 互相独立 — 任何一个失败都不会阻碍其他 Agent。Reporter 优雅处理缺失结果，部分结果在流水线运行期间可通过 `GET /api/status/{job_id}` 获取。
 
-> 📖 更多文档：[架构设计](./ARCHITECTURE.md) · [工作流程详解](./WORKFLOW.md)
+> 📖 更多文档：[架构设计](./ARCHITECTURE.md) · [工作流程详解](./WORKFLOW.md) · [技术选型](./DECISIONS.md) · [演进日志](./docs/EVOLUTION_LOG.md)
 
 ## 快速开始
 
@@ -156,6 +157,10 @@ repolens/
 │   │   │   ├── repo_agent.py    # 封装 RepoAnalyzer
 │   │   │   ├── git_agent.py     # 封装 GitAnalyzer
 │   │   │   └── registry.py      # AgentRegistry 注册中心
+│   │   ├── context/             # Context 层（v2.1）
+│   │   │   ├── base.py          # RepositoryContext 不可变上下文
+│   │   │   ├── repository_context.py  # 上下文工厂函数
+│   │   │   └── context_manager.py     # ContextManager 生命周期
 │   │   └── analyzers/
 │   │       ├── static_analyzer.py  # Pylint + Radon
 │   │       ├── repo_analyzer.py    # README + 目录树 + LLM
@@ -178,6 +183,9 @@ repolens/
 ├── samples/                   # 推荐测试仓库列表
 ├── ARCHITECTURE.md            # 系统架构文档
 ├── WORKFLOW.md                # 完整工作流程详解
+├── DECISIONS.md               # 技术选型说明
+├── docs/
+│   └── EVOLUTION_LOG.md       # 项目演进日志
 └── README.md
 ```
 

@@ -93,35 +93,38 @@ class AgentRegistry:
 
     async def run_all(
         self,
-        tasks: list[tuple[str, str]],
+        tasks: list[tuple[str, Any]],
         *,
         return_exceptions: bool = True,
+        context: Any = None,
         **kwargs: Any,
     ) -> dict[str, Any]:
         """并行运行多个 Agent，返回名称→结果的映射。
 
         参数:
-            tasks: [(agent_name, repo_path), ...] 列表。
+            tasks: [(agent_name, context), ...] 列表。
+                   context 为 RepositoryContext 实例。
             return_exceptions: True 时异常作为结果返回而非抛出。
+            context: 统一的 RepositoryContext，传递给所有 Agent。
             **kwargs: 传递给每个 Agent.run() 的额外参数。
 
         返回:
             {agent_name: result} 字典，失败时结果为对应异常对象。
         """
 
-        async def _run_one(name: str, repo_path: str) -> tuple[str, Any]:
+        async def _run_one(name: str, ctx: Any) -> tuple[str, Any]:
             agent = self.get(name)
             if agent is None:
                 return name, ValueError(f"未注册的 Agent: {name}")
             try:
-                result = await agent.run(repo_path, **kwargs)
+                result = await agent.run(ctx, **kwargs)
                 return name, result
             except Exception as exc:
                 if return_exceptions:
                     return name, exc
                 raise
 
-        coros = [_run_one(name, path) for name, path in tasks]
+        coros = [_run_one(name, ctx) for name, ctx in tasks]
         gathered = await asyncio.gather(*coros, return_exceptions=return_exceptions)
 
         # 如果最外层也 return_exceptions=True 且某个内部抛了异常，
