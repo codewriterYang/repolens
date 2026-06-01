@@ -429,7 +429,7 @@ v2.3:
 
 - **时间**：2026-06-01
 - **版本**：v2.4
-- **Commit**：待提交
+- **Commit**：`af14f12`
 
 ### 目标
 
@@ -497,9 +497,92 @@ v2.4:  Planner → [Static | Repo | Git] → ReportAgent → Reporter(report)
 
 ---
 
+## Phase 7 — Dynamic Planner（动态策略引擎）
+
+- **时间**：2026-06-01
+- **版本**：v2.5
+- **Commit**：待提交
+
+### 目标
+
+将 PlannerAgent 从固定计划升级为动态策略引擎。
+根据仓库特征（文件数、README 存在性）自动决定应执行和应跳过的分析任务。
+不引入 LLM 调用，纯规则引擎驱动。
+
+### 为什么引入 Dynamic Planner
+
+Phase 5 的 PlannerAgent 始终返回固定计划（三个分析器全部执行），
+没有体现"规划"的实际价值。动态 Planner 让系统能根据仓库特征做出智能决策：
+大仓库跳过昂贵的静态分析、无 README 的仓库跳过意图分析。
+
+### 新增
+
+| 模块 | 文件 | 职责 |
+|------|------|------|
+| `RepositoryProfiler` | `planner/repository_profiler.py` | 扫描仓库元信息（文件数、README/CI/Docker 存在性） |
+| `PlanningRules` | `planner/planning_rules.py` | 规则引擎：file_count>1000→skip static, !has_readme→skip repo |
+| `DynamicPlanner` | `planner/dynamic_planner.py` | 组合 Profiler + Rules，生成 AnalysisPlan |
+
+### 规划规则
+
+| 条件 | 动作 | 原因 |
+|------|------|------|
+| `file_count > 1000` | 跳过 `static_analysis` | repository too large |
+| `!has_readme` | 跳过 `repo_analysis` | README missing |
+| 默认 | 全部执行 | — |
+
+### 架构变化
+
+```
+v2.4:  PlannerAgent → 固定 tasks=["static","repo","git"]
+
+v2.5:  PlannerAgent → DynamicPlanner
+         ├─ RepositoryProfiler.analyze(repo_path) → profile
+         ├─ PlanningRules.evaluate(profile) → AnalysisPlan
+         └─ Orchestrator 根据 plan.tasks 动态决定执行哪些 Agent
+```
+
+### Schema 升级
+
+`AnalysisPlan` 新增字段：
+- `skipped_tasks: list[str]` — 被跳过的任务
+- `reasons: dict[str, str]` — 跳过原因（task → reason）
+
+向后兼容：旧字段 `tasks` 和 `priority` 不变。
+
+### Orchestrator 流程变更
+
+`_run_analyzers` 改为 Plan 驱动：
+- `"static_analysis" in skipped` → `run_static()` 返回 None
+- `"repo_analysis" in skipped` → `run_repo()` 返回 None
+- `git_analysis` 始终执行（不会被规则跳过）
+
+### ReportAgent 增强
+
+HTML 报告新增 Plan Summary 区域：
+- 展示执行了哪些任务
+- 跳过了哪些任务及原因
+- 计划优先级
+
+### 测试结果
+
+```
+=== RepoLens 端到端验证 ===
+12/12 全部通过
+```
+
+### 收益
+
+- 大仓库分析速度提升（跳过静态分析节省 120-300s）
+- 缺失 README 的仓库不再浪费 LLM 调用
+- 规则引擎可扩展：新增规则只需在 `PlanningRules.evaluate()` 加 if 块
+- 无 LLM 调用、无新依赖、纯 Python
+
+---
+
 ## 后续规划
 
-### Phase 7 — 动态策略与深入协作
+### Phase 8 — 深入协作
 
 引入协调 Agent（Orchestrator Agent），Agent 间可传递分析结果。例如 StaticAgent 发现高风险文件后通知 GitAgent 聚焦分析该文件的变更历史。
 

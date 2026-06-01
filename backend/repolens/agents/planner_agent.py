@@ -1,14 +1,10 @@
 """PlannerAgent — 分析计划编排 Agent。
 
-Phase 5: 第一个真正参与 Agent 协作的 Agent。
+Phase 7: 升级为动态策略引擎。
+不再返回固定 tasks，而是根据仓库特征动态决定执行哪些分析任务。
 
-职责：
-- 根据 RepositoryContext 制定分析计划 (AnalysisPlan)
-- 将分析计划写入 SharedMemory (key: "analysis_plan")
-- 后续 Agent 读取此计划以了解应执行的分析任务
-
-这是 RepoLens 第一条真实 Agent 协作链路：
-PlannerAgent → SharedMemory → StaticAgent/RepoAgent/GitAgent
+协作链路：
+RepositoryProfiler → PlanningRules → AnalysisPlan → SharedMemory
 """
 
 from __future__ import annotations
@@ -17,6 +13,7 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from .base import BaseAgent
+from ..planner import DynamicPlanner
 from ..schemas import AnalysisPlan
 
 if TYPE_CHECKING:
@@ -26,37 +23,40 @@ logger = logging.getLogger(__name__)
 
 
 class PlannerAgent(BaseAgent):
-    """分析计划编排 Agent。
+    """分析计划编排 Agent（动态策略版）。
 
-    在流水线中第一个运行，根据仓库上下文制定分析计划，
-    将计划写入 SharedMemory 供后续 Agent 读取。
+    在流水线中第一个运行，根据仓库特征制定动态分析计划：
+    - 文件 > 1000 → 跳过 static_analysis
+    - README 不存在 → 跳过 repo_analysis
+    - 其余情况默认全部执行
 
-    当前 MVP 阶段始终返回默认计划（三个分析器全部启用），
-    后续可扩展为根据仓库特征动态决定分析策略。
+    计划通过 SharedMemory 传递给后续 Agent 和 Orchestrator。
     """
 
     name = "planner"
 
+    def __init__(self, memory=None):
+        super().__init__(memory=memory)
+        self._dynamic_planner = DynamicPlanner()
+
     async def run(self, context: RepositoryContext, **kwargs: Any) -> AnalysisPlan:
-        """制定分析计划并写入 SharedMemory。
+        """制定动态分析计划并写入 SharedMemory。
 
         参数:
             context: 不可变分析上下文。
 
         返回:
-            AnalysisPlan 对象。
+            AnalysisPlan 包含动态决定的 tasks / skipped_tasks / reasons。
         """
-        plan = AnalysisPlan(
-            tasks=["static_analysis", "repo_analysis", "git_analysis"],
-            priority="normal",
-        )
+        # Phase 7: 不再返回固定 tasks，改为根据仓库特征动态决定
+        plan = self._dynamic_planner.plan(context.repo_path)
 
-        # 将计划写入 SharedMemory，供其他 Agent 读取
+        # 将计划写入 SharedMemory
         if self._memory is not None:
             self._memory.set("analysis_plan", plan)
             logger.info(
-                "PlannerAgent: 分析计划已写入 SharedMemory — %s",
-                plan.model_dump(),
+                "PlannerAgent: 动态计划 — tasks=%s skipped=%s reason=%s",
+                plan.tasks, plan.skipped_tasks, plan.reasons,
             )
         else:
             logger.warning("PlannerAgent: SharedMemory 未注入，计划未持久化")

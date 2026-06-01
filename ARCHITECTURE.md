@@ -184,20 +184,22 @@ Orchestrator 每次流水线调用 `create()`，结束后调用 `clear()`。
 
 ### Agent 接入（Phase 5: PlannerAgent 协作）
 
-Phase 5–6 实现了完整的 Agent 协作链路：
+Phase 5–7 实现了完整的动态 Agent 协作链路：
 
 ```
 Orchestrator → Context+Memory
   ├─→ PlannerAgent.run(ctx)
-  │     └─→ memory.set("analysis_plan", plan)
-  ├─→ [StaticAgent | RepoAgent | GitAgent].run(ctx)
-  │     └─→ memory.set("static_result"/"repo_result"/"git_result", result)
+  │     └─→ DynamicPlanner (Profiler + Rules) → AnalysisPlan
+  │           ├─ skipped: file_count>1000→skip static, !readme→skip repo
+  │           └─→ memory.set("analysis_plan", plan)
+  ├─→ [StaticAgent | RepoAgent | GitAgent].run(ctx)  # 根据 Plan 动态跳过
+  │     └─→ memory.set("..._result", result)
   └─→ ReportAgent.run(ctx)
-        └─→ memory.get(...) → ReportResult (JSON + HTML)
+        └─→ memory.get(...) → ReportResult (含 Plan Summary)
 ```
 
-PlannerAgent 先制定分析计划，分析 Agent 执行并写入结果，
-ReportAgent 读取并生成汇总报告——形成 Plan → Execute → Report 闭环。
+Phase 7 引入 DynamicPlanner：规则引擎根据仓库特征（文件数、README）
+自动决定分析策略，Orchestrator 按 Plan 动态执行——不再硬编码三路并行。
 
 ---
 

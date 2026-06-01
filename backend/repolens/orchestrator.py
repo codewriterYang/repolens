@@ -31,7 +31,7 @@ from .db import save_partial_results, save_report, update_job_status
 from .llm_service import LLMService
 from .memory import MemoryManager
 from .reporter import Reporter
-from .schemas import GitResult, JobStatus, RepoResult, StaticResult
+from .schemas import AnalysisPlan, GitResult, JobStatus, RepoResult, StaticResult
 
 logger = logging.getLogger(__name__)
 
@@ -167,12 +167,12 @@ class Orchestrator:
         memory = self._mem_manager.create()
         self._registry.inject_memory(memory)
 
-        # Phase 5: PlannerAgent 先运行，制定分析计划写入 SharedMemory
-        await self._run_planner(job_id, context)
+        # Phase 7: PlannerAgent 动态制定分析计划
+        plan = await self._run_planner(job_id, context)
 
-        # 三个分析 Agent 并行运行，结果写入 SharedMemory
+        # 根据 Plan 动态执行分析 Agent
         static_result, repo_result, git_result, analyzer_durations = (
-            await self._run_analyzers(job_id, context)
+            await self._run_analyzers(job_id, context, plan)
         )
 
         # Phase 6: ReportAgent 从 SharedMemory 读取并生成汇总报告
@@ -224,11 +224,10 @@ class Orchestrator:
 
     async def _run_planner(
         self, job_id: str, context,
-    ) -> None:
-        """运行 PlannerAgent，产出分析计划写入 SharedMemory。
+    ) -> AnalysisPlan:
+        """运行 PlannerAgent，返回动态分析计划。
 
-        这是 Agent 协作链路的第一环：Planner → Memory → 其他 Agent。
-        PlannerAgent 失败不阻塞后续分析。
+        Phase 7: Planner 失败时返回默认计划（全部执行）。
         """
         try:
             plan = await asyncio.wait_for(
@@ -236,13 +235,19 @@ class Orchestrator:
                 timeout=30,
             )
             logger.info(
-                "流水线 [%s] Planner 完成: %s",
-                job_id, plan.tasks,
+                "流水线 [%s] Planner 完成: tasks=%s skipped=%s",
+                job_id, plan.tasks, plan.skipped_tasks,
             )
+            return plan
         except asyncio.TimeoutError:
             logger.warning("流水线 [%s] Planner 超时，使用默认计划", job_id)
         except Exception as exc:
             logger.warning("流水线 [%s] Planner 失败: %s", job_id, exc)
+        # 降级：默认全部执行
+        return AnalysisPlan(
+            tasks=["static_analysis", "repo_analysis", "git_analysis"],
+            priority="normal",
+        )
 
     # ------------------------------------------------------------------
     # ReportAgent 执行（Phase 6）
@@ -277,29 +282,34 @@ class Orchestrator:
     # ------------------------------------------------------------------
 
     async def _run_analyzers(
-        self, job_id: str, context,
+        self, job_id: str, context, plan: AnalysisPlan,
     ) -> tuple[
         Optional[StaticResult],
         Optional[RepoResult],
         Optional[GitResult],
         dict[str, float],
     ]:
-        """并行运行全部三个 Agent，各自有独立超时。
+        """根据计划动态执行 Agent，各自有独立超时。
 
-        每个 Agent 的失败独立 — 一个失败不会阻碍其他 Agent。
+        Phase 7: 由 Plan.tasks 驱动，被跳过的 Agent 返回 None。
         Reporter 优雅处理缺失的结果。
 
         参数:
             job_id: 分析任务 ID。
             context: RepositoryContext，通过 AgentRegistry 传递给各 Agent。
+            plan: AnalysisPlan，决定哪些 Agent 应运行。
 
         返回:
             (static_result, repo_result, git_result, durations_dict) 元组。
             durations_dict 映射 Agent 名称 → 耗时（秒）。
         """
         durations: dict[str, float] = {}
+        skipped = set(plan.skipped_tasks)
 
         async def run_static() -> Optional[StaticResult]:
+            if "static_analysis" in skipped:
+                logger.info("流水线 [%s] 跳过 static_analysis（Plan 决定）", job_id)
+                return None
             t0 = time.monotonic()
             agent = self._registry.get("static")
             try:
@@ -330,6 +340,9 @@ class Orchestrator:
                 return StaticResult(error=f"静态分析失败: {exc}")
 
         async def run_repo() -> Optional[RepoResult]:
+            if "repo_analysis" in skipped:
+                logger.info("流水线 [%s] 跳过 repo_analysis（Plan 决定）", job_id)
+                return None
             t0 = time.monotonic()
             agent = self._registry.get("repo")
             try:
@@ -360,6 +373,7 @@ class Orchestrator:
                 return RepoResult(error=f"仓库分析失败: {exc}")
 
         async def run_git() -> Optional[GitResult]:
+            # git_analysis 始终执行（规则引擎不会跳过）
             t0 = time.monotonic()
             agent = self._registry.get("git")
             try:

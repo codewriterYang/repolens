@@ -13,7 +13,7 @@ import logging
 from typing import TYPE_CHECKING, Any, Optional
 
 from .base import BaseAgent
-from ..schemas import GitResult, ReportResult, RepoResult, StaticResult
+from ..schemas import AnalysisPlan, GitResult, ReportResult, RepoResult, StaticResult
 
 if TYPE_CHECKING:
     from ..context import RepositoryContext
@@ -43,16 +43,18 @@ class ReportAgent(BaseAgent):
         返回:
             ReportResult 包含 JSON 摘要和 HTML 报告。
         """
-        # 从 SharedMemory 读取各 Agent 结果
+        # 从 SharedMemory 读取各 Agent 结果和计划
         static: Optional[StaticResult] = None
         repo: Optional[RepoResult] = None
         git: Optional[GitResult] = None
+        plan: Optional[AnalysisPlan] = None
         agents_available: list[str] = []
 
         if self._memory is not None:
             static = self._memory.get("static_result")
             repo = self._memory.get("repo_result")
             git = self._memory.get("git_result")
+            plan = self._memory.get("analysis_plan")
 
             if static is not None:
                 agents_available.append("static")
@@ -62,8 +64,9 @@ class ReportAgent(BaseAgent):
                 agents_available.append("git")
 
             logger.info(
-                "ReportAgent: 读取 SharedMemory — agents=%s",
+                "ReportAgent: 读取 SharedMemory — agents=%s plan=%s",
                 agents_available,
+                plan.tasks if plan else "N/A",
             )
         else:
             logger.warning("ReportAgent: SharedMemory 未注入，报告将为空")
@@ -87,14 +90,15 @@ class ReportAgent(BaseAgent):
             unique_contributors=git.unique_contributors if git else 0,
             ci_cd_detected=git.ci_cd_config if git else False,
 
-            # HTML 报告
-            html_report=self._build_html(
-                context=context,
-                static=static,
-                repo=repo,
-                git=git,
-                agents=agents_available,
-            ),
+        # HTML 报告
+        html_report=self._build_html(
+            context=context,
+            plan=plan,
+            static=static,
+            repo=repo,
+            git=git,
+            agents=agents_available,
+        ),
         )
 
         # 写回 SharedMemory
@@ -118,6 +122,7 @@ class ReportAgent(BaseAgent):
     @staticmethod
     def _build_html(
         context: RepositoryContext,
+        plan: Optional[AnalysisPlan],
         static: Optional[StaticResult],
         repo: Optional[RepoResult],
         git: Optional[GitResult],
@@ -170,6 +175,7 @@ function toggle(id) {{
 <div class="section-content open" id="overview">
 <div class="card">
 {ReportAgent._agent_badges(agents)}
+{ReportAgent._plan_summary(plan)}
 </div>
 </div>
 
@@ -205,6 +211,25 @@ function toggle(id) {{
     # ------------------------------------------------------------------
     # 子区域渲染
     # ------------------------------------------------------------------
+
+    @staticmethod
+    def _plan_summary(plan: Optional[AnalysisPlan]) -> str:
+        if plan is None:
+            return ""
+        lines = ['<div style="margin-top:12px;padding:10px;background:#f0f9ff;border-radius:6px;">']
+        lines.append('<p style="font-weight:600;margin-bottom:6px;">📋 Plan Summary</p>')
+        lines.append(f'<p>执行任务: {", ".join(plan.tasks)}</p>')
+        if plan.skipped_tasks:
+            skipped_info = ", ".join(
+                f"{t}（{plan.reasons.get(t, "unknown")}）"
+                for t in plan.skipped_tasks
+            )
+            lines.append(
+                f'<p style="color:#f59e0b;">跳过任务: {skipped_info}</p>'
+            )
+        lines.append(f'<p style="font-size:11px;color:#64748b;">优先级: {plan.priority}</p>')
+        lines.append('</div>')
+        return "\n".join(lines)
 
     @staticmethod
     def _agent_badges(agents: list[str]) -> str:

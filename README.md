@@ -167,6 +167,10 @@ repolens/
 │   │   │   ├── base.py          # SharedMemory 线程安全 KV 存储
 │   │   │   ├── shared_memory.py # 辅助函数（前缀筛选等）
 │   │   │   └── memory_manager.py     # MemoryManager 生命周期
+│   │   ├── planner/             # Planner 层（v2.5，动态策略引擎）
+│   │   │   ├── repository_profiler.py # 仓库特征分析
+│   │   │   ├── planning_rules.py      # 规则引擎
+│   │   │   └── dynamic_planner.py     # 动态策略编排
 │   │   └── analyzers/
 │   │       ├── static_analyzer.py  # Pylint + Radon
 │   │       ├── repo_analyzer.py    # README + 目录树 + LLM
