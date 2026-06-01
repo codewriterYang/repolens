@@ -216,24 +216,53 @@ class GitResult(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+class AnalysisStrategy(BaseModel):
+    """分析策略 — 决定各 Agent 如何运行（非是否运行）。
+
+    v2.6 (Phase 8): 从 skip-task 模式升级为 strategy 模式。
+    所有 Agent 始终执行，但根据仓库规模选择分析深度。
+
+    static 策略:
+        - "full": 完整 pylint + radon（≤500 文件）
+        - "sampled": 核心文件 pylint + 全量 radon（501-1000 文件）
+        - "fast": 仅 radon cc 快速扫描（>1000 文件）
+
+    repo / git: 始终 "full"
+    """
+
+    static: str = Field(default="full", description="full | sampled | fast")
+    repo: str = Field(default="full", description="repo 始终保持 full")
+    git: str = Field(default="full", description="git 始终保持 full")
+
+    @property
+    def static_confidence(self) -> int:
+        """静态分析的置信度百分比。"""
+        return {"full": 100, "sampled": 75, "fast": 50}.get(self.static, 100)
+
+
 class AnalysisPlan(BaseModel):
     """PlannerAgent 产出的分析计划。
 
-    v2.5: 新增 skipped_tasks 和 reasons，支持动态策略。
-    定义本次分析应执行和应跳过的任务，通过 SharedMemory 供其他 Agent 读取。
+    v2.6 (Phase 8): 新增 strategy 字段。
+    从"决定跳过哪些任务"升级为"决定各 Agent 如何运行"。
+    skipped_tasks / reasons 保留向后兼容，但 Orchestrator 不再使用。
     """
 
     tasks: list[str] = Field(
         default_factory=lambda: ["static_analysis", "repo_analysis", "git_analysis"],
-        description="待执行的分析任务列表",
+        description="待执行的分析任务列表（始终全量）",
+    )
+    strategy: AnalysisStrategy = Field(
+        default_factory=AnalysisStrategy,
+        description="各 Agent 的执行策略（full/sampled/fast）",
     )
     skipped_tasks: list[str] = Field(
         default_factory=list,
-        description="被跳过的分析任务列表",
+        description="（已弃用）被跳过的分析任务列表，保留向后兼容",
     )
     reasons: dict[str, str] = Field(
         default_factory=dict,
-        description="跳过原因（task → reason）",
+        description="（已弃用）跳过原因，现改为 strategy 选择理由",
     )
     priority: str = Field(default="normal", description="normal 或 high")
 

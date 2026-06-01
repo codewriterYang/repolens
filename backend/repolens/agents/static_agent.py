@@ -37,8 +37,8 @@ class StaticAgent(BaseAgent):
             StaticResult 包含 pylint 评分、圈复杂度热点、
             文件风险摘要等。
         """
-        self._read_analysis_plan()
-        result = await self._analyzer.run(context.repo_path)
+        strategy_mode = self._read_analysis_strategy()
+        result = await self._analyzer.run(context.repo_path, strategy_mode)
 
         # Phase 6: 将结果写入 SharedMemory 供 ReportAgent 读取
         if self._memory is not None:
@@ -46,15 +46,19 @@ class StaticAgent(BaseAgent):
 
         return result
 
-    def _read_analysis_plan(self) -> None:
-        """从 SharedMemory 读取 PlannerAgent 产出的分析计划。"""
+    def _read_analysis_strategy(self) -> str:
+        """从 SharedMemory 读取 PlannerAgent 的 static 策略模式。"""
         import logging
         logger = logging.getLogger(__name__)
         if self._memory and self._memory.has("analysis_plan"):
             plan = self._memory.get("analysis_plan")
-            logger.info(
-                "StaticAgent: 读取分析计划 — tasks=%s priority=%s",
-                plan.tasks, plan.priority,
-            )
-        else:
-            logger.info("StaticAgent: 未找到分析计划，使用默认分析策略")
+            strategy = getattr(plan, "strategy", None)
+            if strategy:
+                mode = strategy.static
+                logger.info(
+                    "StaticAgent: 读取策略 — static=%s (confidence=%d%%)",
+                    mode, strategy.static_confidence,
+                )
+                return mode
+        logger.info("StaticAgent: 未找到分析策略，默认 full 模式")
+        return "full"

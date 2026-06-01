@@ -262,67 +262,69 @@ class TestPlanningRules:
         from repolens.planner import PlanningRules
         return PlanningRules()
 
-    # ---------- 跳过 static_analysis ----------
+    # ---------- static 策略（Phase 8: skip → strategy） ----------
 
-    def test_skip_static_for_large_repo(self, rules):
-        """file_count > 1000 → 跳过 static_analysis。"""
+    def test_fast_strategy_for_large_repo(self, rules):
+        """file_count > 1000 → static = "fast"。"""
         plan = rules.evaluate({"file_count": 2000, "has_readme": True})
-        assert "static_analysis" in plan.skipped_tasks
-        assert "static_analysis" not in plan.tasks
+        assert plan.strategy.static == "fast"
+        assert "static_analysis" in plan.tasks          # 始终执行
 
-    def test_skip_static_reason_contains_file_count(self, rules):
-        """跳过原因包含文件数信息。"""
+    def test_fast_strategy_confidence_50(self, rules):
+        """fast 模式置信度 50%。"""
         plan = rules.evaluate({"file_count": 2000, "has_readme": True})
-        assert "too large" in plan.reasons.get("static_analysis", "").lower()
-        assert "2000" in plan.reasons.get("static_analysis", "")
+        assert plan.strategy.static_confidence == 50
 
-    def test_boundary_1000_not_skipped(self, rules):
-        """恰好 1000 文件 → 不跳过（>1000 才跳过）。"""
+    def test_sampled_strategy_for_medium_repo(self, rules):
+        """501-1000 文件 → static = "sampled"。"""
+        plan = rules.evaluate({"file_count": 750, "has_readme": True})
+        assert plan.strategy.static == "sampled"
+        assert plan.strategy.static_confidence == 75
+
+    def test_full_strategy_for_small_repo(self, rules):
+        """≤500 文件 → static = "full"。"""
+        plan = rules.evaluate({"file_count": 100, "has_readme": True})
+        assert plan.strategy.static == "full"
+        assert plan.strategy.static_confidence == 100
+
+    def test_boundary_1000_is_fast(self, rules):
+        """恰好 1000 文件 → sampled（>1000 才是 fast）。"""
         plan = rules.evaluate({"file_count": 1000, "has_readme": True})
-        assert "static_analysis" not in plan.skipped_tasks
+        assert plan.strategy.static == "sampled"
 
-    # ---------- 跳过 repo_analysis ----------
+    # ---------- repo/git 始终 full ----------
 
-    def test_skip_repo_when_readme_missing(self, rules):
-        """README 不存在 → 跳过 repo_analysis。"""
-        plan = rules.evaluate({"file_count": 10, "has_readme": False})
-        assert "repo_analysis" in plan.skipped_tasks
-        assert "repo_analysis" not in plan.tasks
+    def test_repo_always_full(self, rules):
+        """repo 分析始终保持 full。"""
+        plan = rules.evaluate({"file_count": 5000, "has_readme": False})
+        assert plan.strategy.repo == "full"
 
-    def test_skip_repo_reason_is_readme_missing(self, rules):
-        """跳过原因为 "README missing"。"""
-        plan = rules.evaluate({"file_count": 10, "has_readme": False})
-        assert plan.reasons["repo_analysis"] == "README missing"
+    def test_git_always_full(self, rules):
+        """git 分析始终保持 full。"""
+        plan = rules.evaluate({"file_count": 5000, "has_readme": False})
+        assert plan.strategy.git == "full"
 
     # ---------- 组合场景 ----------
 
-    def test_both_skipped_when_large_and_no_readme(self, rules):
-        """大仓库 + 无 README → 跳过 static 和 repo 两项。"""
+    def test_all_tasks_always_executed(self, rules):
+        """无论仓库大小，所有任务始终在执行列表中。"""
         plan = rules.evaluate({"file_count": 5000, "has_readme": False})
-        assert set(plan.skipped_tasks) == {"static_analysis", "repo_analysis"}
-        assert "git_analysis" in plan.tasks  # git_analysis 始终保留
-
-    def test_git_analysis_never_skipped(self, rules):
-        """git_analysis 在任何情况下都不会被跳过。"""
-        plan = rules.evaluate({"file_count": 5000, "has_readme": False})
-        assert "git_analysis" in plan.tasks
-        assert "git_analysis" not in plan.skipped_tasks
-
-    def test_normal_repo_all_tasks(self, rules):
-        """正常仓库 → 三个任务全部执行。"""
-        plan = rules.evaluate({"file_count": 100, "has_readme": True})
-        assert plan.skipped_tasks == []
         assert "static_analysis" in plan.tasks
         assert "repo_analysis" in plan.tasks
         assert "git_analysis" in plan.tasks
 
-    def test_priority_high_when_tasks_skipped(self, rules):
-        """有跳过时 priority=high。"""
+    def test_reasons_contain_strategy_rationale(self, rules):
+        """reasons 包含策略选择理由。"""
+        plan = rules.evaluate({"file_count": 2000, "has_readme": True})
+        assert "fast" in plan.reasons.get("static", "")
+
+    def test_priority_high_for_fast_strategy(self, rules):
+        """fast 策略时 priority=high。"""
         plan = rules.evaluate({"file_count": 2000, "has_readme": True})
         assert plan.priority == "high"
 
-    def test_priority_normal_when_no_skip(self, rules):
-        """无跳过时 priority=normal。"""
+    def test_priority_normal_for_full_strategy(self, rules):
+        """full 策略时 priority=normal。"""
         plan = rules.evaluate({"file_count": 10, "has_readme": True})
         assert plan.priority == "normal"
 
@@ -343,20 +345,22 @@ class TestDynamicPlanner:
         """用真实目录（当前目录）测试 plan，确保不崩溃。"""
         plan = planner.plan(os.getcwd())
         assert isinstance(plan.tasks, list)
-        assert isinstance(plan.skipped_tasks, list)
         assert isinstance(plan.reasons, dict)
         assert len(plan.tasks) > 0
+        assert hasattr(plan, "strategy")
 
-    def test_plan_returns_all_tasks_for_small_dir(self, planner, tmp_path):
-        """小目录（<1000 文件）→ 全部执行。"""
+    def test_plan_all_tasks_small_dir(self, planner, tmp_path):
+        """小目录 → 全部任务执行。"""
         (tmp_path / "README.md").write_text("# Test")
         plan = planner.plan(str(tmp_path))
-        assert plan.skipped_tasks == []
+        assert "static_analysis" in plan.tasks
+        assert plan.strategy.static == "full"
 
     def test_plan_falls_back_for_missing_dir(self, planner):
-        """不存在的目录 → 不崩溃，返回结果。"""
+        """不存在的目录 → 不崩溃，返回默认 plan。"""
         plan = planner.plan("/nonexistent/directory/xyz")
         assert plan is not None
+        assert "static_analysis" in plan.tasks
 
 
 # =========================================================================
@@ -552,14 +556,13 @@ class TestReportAgent:
         """HTML 报告包含 Plan Summary。"""
         from repolens.agents import ReportAgent
         from repolens.memory import SharedMemory
-        from repolens.schemas import AnalysisPlan
+        from repolens.schemas import AnalysisPlan, AnalysisStrategy
 
         memory = SharedMemory()
-        # 写入一个 AnalysisPlan
         plan = AnalysisPlan(
-            tasks=["git_analysis"],
-            skipped_tasks=["static_analysis"],
-            reasons={"static_analysis": "too large"},
+            tasks=["static_analysis", "repo_analysis", "git_analysis"],
+            strategy=AnalysisStrategy(static="fast", repo="full", git="full"),
+            reasons={"static": "超大仓库，fast 模式"},
         )
         memory.set("analysis_plan", plan)
 
@@ -569,8 +572,8 @@ class TestReportAgent:
         result = asyncio.run(agent.run(context))
 
         assert "Plan Summary" in result.html_report
-        assert "git_analysis" in result.html_report
-        assert "too large" in result.html_report
+        assert "分析策略" in result.html_report
+        assert "fast" in result.html_report
 
     def test_reads_memory_for_agent_results(self, context):
         """从 Memory 读取各 Agent 结果。"""

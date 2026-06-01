@@ -44,8 +44,7 @@ class DynamicPlanner:
         plan = self._rules.evaluate(profile)
 
         logger.info(
-            "DynamicPlanner: %d tasks, %d skipped — %s",
-            len(plan.tasks), len(plan.skipped_tasks),
-            plan.reasons,
+            "DynamicPlanner: strategy=%s tasks=%d priority=%s",
+            plan.strategy.model_dump(), len(plan.tasks), plan.priority,
         )
         return plan

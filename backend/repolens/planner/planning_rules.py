@@ -1,27 +1,30 @@
 """PlanningRules — 分析策略规则引擎。
 
-基于 RepositoryProfiler 输出的仓库特征，
-决定应执行和应跳过的分析任务。
+Phase 8: 从 skip-task 升级为 strategy 模式。
+基于仓库特征选择各 Agent 的执行策略（full/sampled/fast），
+所有 Agent 始终执行，不再跳过。
 
 规则（按优先级）：
-1. file_count > 1000 → 跳过 static_analysis（仓库过大）
-2. !has_readme → 跳过 repo_analysis（README 缺失）
-3. 默认：全部执行
+1. file_count > 1000 → static = "fast"（仅 radon cc）
+2. file_count 501-1000 → static = "sampled"（核心文件 pylint + 全量 radon）
+3. file_count ≤ 500 → static = "full"（完整 pylint + radon）
+4. repo / git → 始终 "full"
 """
 
 from __future__ import annotations
 
 import logging
 
-from ..schemas import AnalysisPlan
+from ..schemas import AnalysisPlan, AnalysisStrategy
 
 logger = logging.getLogger(__name__)
 
-# 默认任务列表
+# 默认任务列表（始终全量执行）
 _ALL_TASKS = ["static_analysis", "repo_analysis", "git_analysis"]
 
-# 跳过阈值
-_FILE_COUNT_SKIP_THRESHOLD = 1000
+# 策略阈值
+_SAMPLED_THRESHOLD = 500
+_FAST_THRESHOLD = 1000
 
 
 class PlanningRules:
@@ -31,56 +34,58 @@ class PlanningRules:
 
         rules = PlanningRules()
         plan = rules.evaluate(profile)
-        # plan.tasks = ["repo_analysis", "git_analysis"]
-        # plan.skipped_tasks = ["static_analysis"]
-        # plan.reasons = {"static_analysis": "repository too large"}
+        # plan.strategy.static == "fast"  (而非 skip)
+        # plan.tasks == ["static_analysis", "repo_analysis", "git_analysis"]  (始终全量)
     """
 
     def evaluate(self, profile: dict) -> AnalysisPlan:
-        """根据仓库特征决定分析策略。
+        """根据仓库特征选择分析策略。
 
         参数:
             profile: RepositoryProfiler.analyze() 输出。
 
         返回:
-            AnalysisPlan 包含 tasks / skipped_tasks / reasons。
+            AnalysisPlan 包含 strategy（含各 Agent 执行模式）。
         """
-        tasks = list(_ALL_TASKS)
-        skipped: list[str] = []
+        file_count = profile.get("file_count", 0)
         reasons: dict[str, str] = {}
+        static_strategy = "full"
         priority = "normal"
 
-        # 规则 1: 文件过多 → 跳过静态分析
-        file_count = profile.get("file_count", 0)
-        if file_count > _FILE_COUNT_SKIP_THRESHOLD:
-            if "static_analysis" in tasks:
-                tasks.remove("static_analysis")
-                skipped.append("static_analysis")
-                reasons["static_analysis"] = (
-                    f"repository too large ({file_count} files > {_FILE_COUNT_SKIP_THRESHOLD})"
-                )
-
-        # 规则 2: README 不存在 → 跳过仓库分析
-        has_readme = profile.get("has_readme", False)
-        if not has_readme:
-            if "repo_analysis" in tasks:
-                tasks.remove("repo_analysis")
-                skipped.append("repo_analysis")
-                reasons["repo_analysis"] = "README missing"
-
-        # 如果跳过了关键任务，提高优先级标识
-        if skipped:
+        if file_count > _FAST_THRESHOLD:
+            static_strategy = "fast"
+            reasons["static"] = (
+                f"超大仓库 ({file_count} files > {_FAST_THRESHOLD})，"
+                f"fast 模式：仅 radon cc 扫描"
+            )
             priority = "high"
+        elif file_count > _SAMPLED_THRESHOLD:
+            static_strategy = "sampled"
+            reasons["static"] = (
+                f"大仓库 ({file_count} files, {_SAMPLED_THRESHOLD}-{_FAST_THRESHOLD})，"
+                f"sampled 模式：核心文件 pylint + 全量 radon"
+            )
+        else:
+            reasons["static"] = (
+                f"小仓库 ({file_count} files ≤ {_SAMPLED_THRESHOLD})，"
+                f"full 模式：完整 pylint + radon"
+            )
+
+        strategy = AnalysisStrategy(
+            static=static_strategy,
+            repo="full",
+            git="full",
+        )
 
         plan = AnalysisPlan(
-            tasks=tasks,
-            skipped_tasks=skipped,
+            tasks=list(_ALL_TASKS),
+            strategy=strategy,
             reasons=reasons,
             priority=priority,
         )
 
         logger.info(
-            "PlanningRules: tasks=%s skipped=%s reason=%s",
-            tasks, skipped, reasons,
+            "PlanningRules: strategy=%s priority=%s",
+            strategy.model_dump(), priority,
         )
         return plan

@@ -237,14 +237,28 @@ document.addEventListener('DOMContentLoaded', function() {{
         lines = ['<div style="margin-top:12px;padding:10px;background:#f0f9ff;border-radius:6px;">']
         lines.append('<p style="font-weight:600;margin-bottom:6px;">📋 Plan Summary</p>')
         lines.append(f'<p>执行任务: {", ".join(plan.tasks)}</p>')
-        if plan.skipped_tasks:
-            skipped_info = ", ".join(
-                f"{t}（{plan.reasons.get(t, "unknown")}）"
-                for t in plan.skipped_tasks
-            )
+
+        # Phase 8: 展示 strategy 和 confidence
+        if hasattr(plan, 'strategy') and plan.strategy is not None:
+            strategy = plan.strategy
+            lines.append('<div style="margin-top:6px;">')
+            lines.append('<p style="font-weight:600;font-size:12px;">📊 分析策略</p>')
             lines.append(
-                f'<p style="color:#f59e0b;">跳过任务: {skipped_info}</p>'
+                f'<p style="font-size:11px;">'
+                f'静态分析: {strategy.static}（置信度 {strategy.static_confidence}%） · '
+                f'仓库分析: {strategy.repo} · '
+                f'Git 分析: {strategy.git}'
+                f'</p>'
             )
+            # 显示 strategy 选择理由
+            if plan.reasons:
+                for key, reason in plan.reasons.items():
+                    lines.append(
+                        f'<p style="font-size:10px;color:#64748b;">'
+                        f'→ {reason}</p>'
+                    )
+            lines.append('</div>')
+
         lines.append(f'<p style="font-size:11px;color:#64748b;">优先级: {plan.priority}</p>')
         lines.append('</div>')
         return "\n".join(lines)

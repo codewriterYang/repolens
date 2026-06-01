@@ -584,7 +584,7 @@ HTML 报告新增 Plan Summary 区域：
 
 - **时间**：2026-06-01
 - **版本**：v2.5.1
-- **Commit**：`（待提交）`
+- **Commit**：`e05d0d9`
 
 ### 目标
 
@@ -651,6 +651,85 @@ HTML 报告新增 Plan Summary 区域：
 - 前端交互逻辑健壮性大幅提升，消除 6 个状态管理 bug
 - 历史列表实时更新，无需手动刷新
 - 历史查看与当前任务彻底解耦，互不干扰
+
+---
+
+## Phase 8 — Strategy-Based Planning（从 Skip 升级为 Strategy）
+
+- **时间**：2026-06-01
+- **版本**：v2.6
+- **Commit**：`81db852`
+
+### 目标
+
+将 Planner 从"决定哪些任务不执行"升级为"决定各 Agent 如何执行"。
+消除 skip-task 模式导致的评分不完整、报告信息缺失等设计缺陷。
+
+### 为什么升级
+
+Phase 7 的 DynamicPlanner 使用 skip-task 模式：大仓库跳过 StaticAgent、
+无 README 跳过 RepoAgent。这导致了三个问题：
+
+1. **评分不完整**：跳过的 Agent 为 0 分，综合健康评分失真
+2. **报告信息缺失**：用户看不到被跳过的维度的任何数据
+3. **Agent 协作价值下降**：Planner 的价值被简化为"关掉Agent"
+
+### 新增
+
+| 模块 | 文件 | 变更 |
+|------|------|------|
+| `AnalysisStrategy` | `schemas.py` | 新增模型：`static`/`repo`/`git` 各带策略模式 + `static_confidence` 属性 |
+| `AnalysisPlan.strategy` | `schemas.py` | 新增字段，替代 skip_tasks 为主决策方式 |
+| `PlanningRules` | `planning_rules.py` | 重写：从 remove-task 改为选择 strategy |
+| `StaticAgent` | `agents/static_agent.py` | `_read_analysis_strategy()` 读取 strategy，传递给 StaticAnalyzer |
+| `StaticAnalyzer` | `analyzers/static_analyzer.py` | `run()` 新增 `strategy_mode` 参数，支持 full/sampled/fast |
+| `ReportAgent` | `agents/report_agent.py` | `_plan_summary` 改为展示 strategy + 置信度 |
+| `Orchestrator` | `orchestrator.py` | 移除 skip 逻辑，始终执行所有 Agent |
+
+### 策略矩阵
+
+| file_count | static 策略 | 行为 | 置信度 |
+|------------|------------|------|--------|
+| ≤ 500 | `full` | 完整 pylint + radon | 100% |
+| 501–1000 | `sampled` | 非测试文件 pylint + 全量 radon | 75% |
+| > 1000 | `fast` | 仅 radon cc | 50% |
+
+repo / git 始终 `full`。
+
+### 向后兼容
+
+- `skipped_tasks` / `reasons` 字段保留，但 Orchestrator 不再使用
+- `AnalysisPlan` 默认 `strategy=AnalysisStrategy()`（full/full/full）
+- 旧测试已更新为新的 strategy 断言
+
+### 架构变化
+
+```
+v2.5:
+  PlannerAgent → AnalysisPlan(skipped_tasks=["static_analysis"])
+  Orchestrator → "static_analysis" in skipped → return None
+
+v2.6:
+  PlannerAgent → AnalysisPlan(strategy=AnalysisStrategy(static="fast"))
+  Orchestrator → 始终执行 StaticAgent
+  StaticAgent   → 读取 plan.strategy.static → "fast" → 仅 radon
+  ReportAgent   → HTML 展示策略 + 置信度
+```
+
+### 测试结果
+
+```
+54/54 agent architecture 单元测试全部通过
+新增 strategy 相关测试 10+ 个
+```
+
+### 收益
+
+- 所有 Agent 始终执行，评分始终完整
+- 仓库规模越大 → 分析深度越浅（但不消失）
+- 用户永远看到各维度的数据 + 置信度标注
+- Planner 价值提升：从"开关"升级为"智能调速器"
+- 规则引擎可扩展：新增策略模式只需加 `elif` 分支
 
 ---
 

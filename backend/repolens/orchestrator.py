@@ -31,7 +31,7 @@ from .db import save_partial_results, save_report, update_job_status
 from .llm_service import LLMService
 from .memory import MemoryManager
 from .reporter import Reporter
-from .schemas import AnalysisPlan, GitResult, JobStatus, RepoResult, StaticResult
+from .schemas import AnalysisPlan, AnalysisStrategy, GitResult, JobStatus, RepoResult, StaticResult
 
 logger = logging.getLogger(__name__)
 
@@ -228,17 +228,18 @@ class Orchestrator:
                 timeout=30,
             )
             logger.info(
-                "流水线 [%s] Planner 完成: tasks=%s skipped=%s",
-                job_id, plan.tasks, plan.skipped_tasks,
+                "流水线 [%s] Planner 完成: tasks=%s strategy=%s",
+                job_id, plan.tasks, plan.strategy.model_dump(),
             )
             return plan
         except asyncio.TimeoutError:
             logger.warning("流水线 [%s] Planner 超时，使用默认计划", job_id)
         except Exception as exc:
             logger.warning("流水线 [%s] Planner 失败: %s", job_id, exc)
-        # 降级：默认全部执行
+        # 降级：默认 full 策略全部执行
         return AnalysisPlan(
             tasks=["static_analysis", "repo_analysis", "git_analysis"],
+            strategy=AnalysisStrategy(static="full", repo="full", git="full"),
             priority="normal",
         )
 
@@ -254,27 +255,23 @@ class Orchestrator:
         Optional[GitResult],
         dict[str, float],
     ]:
-        """根据计划动态执行 Agent，各自有独立超时。
+        """执行所有分析 Agent，各自有独立超时。
 
-        Phase 7: 由 Plan.tasks 驱动，被跳过的 Agent 返回 None。
-        Reporter 优雅处理缺失的结果。
+        Phase 8: 所有 Agent 始终执行，不再 skip。
+        StaticAgent 从 AnalysisPlan.strategy.static 选择分析深度。
 
         参数:
             job_id: 分析任务 ID。
             context: RepositoryContext，通过 AgentRegistry 传递给各 Agent。
-            plan: AnalysisPlan，决定哪些 Agent 应运行。
+            plan: AnalysisPlan，含 strategy 字段决定各 Agent 执行模式。
 
         返回:
             (static_result, repo_result, git_result, durations_dict) 元组。
             durations_dict 映射 Agent 名称 → 耗时（秒）。
         """
         durations: dict[str, float] = {}
-        skipped = set(plan.skipped_tasks)
 
         async def run_static() -> Optional[StaticResult]:
-            if "static_analysis" in skipped:
-                logger.info("流水线 [%s] 跳过 static_analysis（Plan 决定）", job_id)
-                return None
             t0 = time.monotonic()
             agent = self._registry.get("static")
             try:
@@ -305,9 +302,6 @@ class Orchestrator:
                 return StaticResult(error=f"静态分析失败: {exc}")
 
         async def run_repo() -> Optional[RepoResult]:
-            if "repo_analysis" in skipped:
-                logger.info("流水线 [%s] 跳过 repo_analysis（Plan 决定）", job_id)
-                return None
             t0 = time.monotonic()
             agent = self._registry.get("repo")
             try:
