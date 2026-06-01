@@ -109,10 +109,10 @@ RepoAnalyzer LLM 失败 → 纯启发式回退
 后端: FastAPI + Pydantic v2 + aiosqlite + subprocess(git/pylint/radon) + OpenAI兼容API
 前端: React 18 + TypeScript + Vite + Zustand + Tailwind + shadcn/ui + Axios
 存储: SQLite (WAL)
-架构: Agent 抽象层 + Context 层 + Memory 层 (SharedMemory + MemoryManager) + 三层优雅降级
+架构: Agent 抽象层 + Context 层 + Memory 层 + PlannerAgent 协作 + 三层优雅降级
 工程: 模块化单仓库 + 跨平台 subprocess
 测试: pytest 集成测试 (12 用例) + Vitest 组件测试
 ```
 
 > 核心原则：**"不引入比项目更重的依赖"**。2 张表不需要 ORM，1 个 store 不需要 Redux，1 个 LLM 方法不需要 LangChain。
-> v2.0 引入 Agent 抽象层——通过 BaseAgent 接口 + AgentRegistry 实现分析器的统一调度与生命周期管理，为后续多 Agent 协作奠定基础，而不引入框架级依赖。
+> v2.0 引入 Agent 抽象层，v2.3 实现第一条 Agent 协作链路（PlannerAgent → SharedMemory → 分析Agent）。

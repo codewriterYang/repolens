@@ -23,7 +23,7 @@ from typing import Optional
 
 import aiosqlite
 
-from .agents import AgentRegistry, GitAgent, RepoAgent, StaticAgent
+from .agents import AgentRegistry, GitAgent, PlannerAgent, RepoAgent, StaticAgent
 from .cloner import CloneError, RepoCloner
 from .config import config
 from .context import ContextManager
@@ -65,8 +65,11 @@ class Orchestrator:
 
         # --- v2.0: Agent 架构 ---
         # Agent 通过 Registry 注册，Orchestrator 不再直接持有分析器实例。
-        # run_analyzers 中通过 registry.get() 调度 Agent。
         self._registry = AgentRegistry()
+
+        # --- v2.3: PlannerAgent（Phase 5，第一个协作 Agent）---
+        self._planner = PlannerAgent()
+        self._registry.register(self._planner)
         self._registry.register(StaticAgent())
         self._registry.register(RepoAgent(llm))
         self._registry.register(GitAgent())
@@ -152,12 +155,17 @@ class Orchestrator:
             job_id, time.monotonic() - t0, repo_path,
         )
 
-        # --- 阶段二：并行分析（v2.2: Context + Memory） ----------------
+        # --- 阶段二：Agent 协作（v2.3: Planner → Memory → Analyzers） --
         await self._set_status(job_id, JobStatus.ANALYZING, 20, "正在分析代码...")
         # 创建分析上下文和共享记忆
         context = self._ctx_manager.create(repo_url, repo_path, job_id)
         memory = self._mem_manager.create()
         self._registry.inject_memory(memory)
+
+        # Phase 5: PlannerAgent 先运行，制定分析计划写入 SharedMemory
+        await self._run_planner(job_id, context)
+
+        # 三个分析 Agent 并行运行，可从 memory 读取 planner 产出
         static_result, repo_result, git_result, analyzer_durations = (
             await self._run_analyzers(job_id, context)
         )
@@ -201,6 +209,32 @@ class Orchestrator:
         # --- 阶段四：持久化 -----------------------------------------------
         await save_report(self._db, job_id, report)
         logger.info("流水线 [%s] 报告已持久化", job_id)
+
+    # ------------------------------------------------------------------
+    # Planner 执行（Phase 5）
+    # ------------------------------------------------------------------
+
+    async def _run_planner(
+        self, job_id: str, context,
+    ) -> None:
+        """运行 PlannerAgent，产出分析计划写入 SharedMemory。
+
+        这是 Agent 协作链路的第一环：Planner → Memory → 其他 Agent。
+        PlannerAgent 失败不阻塞后续分析。
+        """
+        try:
+            plan = await asyncio.wait_for(
+                self._planner.run(context),
+                timeout=30,
+            )
+            logger.info(
+                "流水线 [%s] Planner 完成: %s",
+                job_id, plan.tasks,
+            )
+        except asyncio.TimeoutError:
+            logger.warning("流水线 [%s] Planner 超时，使用默认计划", job_id)
+        except Exception as exc:
+            logger.warning("流水线 [%s] Planner 失败: %s", job_id, exc)
 
     # ------------------------------------------------------------------
     # 分析器执行

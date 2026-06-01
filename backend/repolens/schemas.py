@@ -216,6 +216,20 @@ class GitResult(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+class AnalysisPlan(BaseModel):
+    """PlannerAgent 产出的分析计划。
+
+    定义本次分析应执行的任务列表及优先级，
+    通过 SharedMemory 写入供其他 Agent 读取。
+    """
+
+    tasks: list[str] = Field(
+        default_factory=lambda: ["static_analysis", "repo_analysis", "git_analysis"],
+        description="待执行的分析任务列表",
+    )
+    priority: str = Field(default="normal", description="normal 或 high")
+
+
 class Recommendation(BaseModel):
     """最终报告中的一条可操作改进建议。"""
 

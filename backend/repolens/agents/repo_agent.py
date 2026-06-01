@@ -37,4 +37,18 @@ class RepoAgent(BaseAgent):
         返回:
             RepoResult 包含使用模式、核心模块、推断风险等。
         """
+        self._read_analysis_plan()
         return await self._analyzer.run(context.repo_path, context.repo_url)
+
+    def _read_analysis_plan(self) -> None:
+        """从 SharedMemory 读取 PlannerAgent 产出的分析计划。"""
+        import logging
+        logger = logging.getLogger(__name__)
+        if self._memory and self._memory.has("analysis_plan"):
+            plan = self._memory.get("analysis_plan")
+            logger.info(
+                "RepoAgent: 读取分析计划 — tasks=%s priority=%s",
+                plan.tasks, plan.priority,
+            )
+        else:
+            logger.info("RepoAgent: 未找到分析计划，使用默认分析策略")

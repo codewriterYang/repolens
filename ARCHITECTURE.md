@@ -182,10 +182,20 @@ class MemoryManager:
 
 Orchestrator 每次流水线调用 `create()`，结束后调用 `clear()`。
 
-### Agent 接入
+### Agent 接入（Phase 5: PlannerAgent 协作）
 
-Agent 通过 `inject_memory()` 接收 Memory 引用，通过 `self.memory.set/get` 读写。
-当前阶段暂不产生业务使用，仅铺设基础设施。
+Phase 5 引入 PlannerAgent，实现第一条真实 Agent 协作链路：
+
+```
+Orchestrator → Context+Memory
+  ├─→ PlannerAgent.run(ctx)
+  │     └─→ memory.set("analysis_plan", plan)
+  └─→ [StaticAgent | RepoAgent | GitAgent].run(ctx)
+        └─→ memory.get("analysis_plan")  # 读取并记录日志
+```
+
+PlannerAgent 是第一个通过 SharedMemory 与其他 Agent 协作的 Agent。
+当前始终返回默认计划（三个分析器全部启用），后续可扩展为动态策略。
 
 ---
 

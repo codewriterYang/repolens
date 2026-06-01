@@ -283,7 +283,7 @@ v2.1:
 
 - **时间**：2026-06-01
 - **版本**：v2.2
-- **Commit**：待提交
+- **Commit**：`6d83a69`
 
 ### 目标
 
@@ -350,9 +350,84 @@ v2.2:
 
 ---
 
+## Phase 5 — PlannerAgent（Agent 协作）
+
+- **时间**：2026-06-01
+- **版本**：v2.3
+- **Commit**：待提交
+
+### 目标
+
+实现第一条真实 Agent 协作链路：PlannerAgent → SharedMemory → 三个分析 Agent。
+不再新增基础设施，开始让 Agent 真正通过 Memory 协作。
+
+### 为什么引入 PlannerAgent
+
+Phase 4 铺设了 SharedMemory 通道，但没有任何 Agent 真正使用它。
+Phase 5 引入 PlannerAgent 作为协作的起点——它在流水线中最先运行，
+制定分析计划写入 Memory，后续 Agent 读取此计划并根据其内容调整行为。
+
+这是从"各自独立的 Agent"到"协作的多 Agent 系统"的关键一步。
+
+### 新增
+
+| 模块 | 文件 | 职责 |
+|------|------|------|
+| `PlannerAgent` | `agents/planner_agent.py` | 分析计划编排，写入 `memory.set("analysis_plan", plan)` |
+| `AnalysisPlan` | `schemas.py` | Pydantic 模型：`tasks: list[str]` + `priority: str` |
+
+### 架构变化
+
+```
+v2.2:
+  Orchestrator → Context+Memory → [StaticAgent | RepoAgent | GitAgent]
+
+v2.3:
+  Orchestrator → Context+Memory
+    ├─→ PlannerAgent.run(ctx)
+    │     └─→ memory.set("analysis_plan", plan)
+    └─→ [StaticAgent | RepoAgent | GitAgent].run(ctx)
+          └─→ memory.get("analysis_plan")  # 读取并记录日志
+```
+
+### Agent 协作链路
+
+```
+1. Orchestrator 创建 Context + Memory
+2. PlannerAgent.run(ctx)
+     ├─ 制定 AnalysisPlan(tasks=["static_analysis", "repo_analysis", "git_analysis"])
+     └─ memory.set("analysis_plan", plan)
+3. StaticAgent.run(ctx)  → memory.get("analysis_plan") → 日志: "读取分析计划"
+   RepoAgent.run(ctx)    → memory.get("analysis_plan") → 日志: "读取分析计划"
+   GitAgent.run(ctx)     → memory.get("analysis_plan") → 日志: "读取分析计划"
+```
+
+### Orchestrator 流程变更
+
+| 阶段 | v2.2 | v2.3 |
+|------|------|------|
+| 注册 | 3 个 Agent | 4 个 Agent（+PlannerAgent） |
+| 执行顺序 | Clone → 并行 3 Agent | Clone → PlannerAgent(串行) → 并行 3 Agent |
+| Planner 失败 | — | 不阻塞后续分析，日志记录警告 |
+
+### 测试结果
+
+```
+=== RepoLens 端到端验证 ===
+12/12 全部通过
+```
+
+### 收益
+
+- 第一条真实 Agent 协作链路验证了 Memory 通道可用
+- PlannerAgent 可以热插拔——移除它不影响其他 Agent 运行
+- 后续 Phase 可扩展 PlannerAgent 根据仓库特征动态决定分析策略（大仓库跳过某些分析器等）
+
+---
+
 ## 后续规划
 
-### Phase 5 — Agent Collaboration
+### Phase 6 — Agent Collaboration（深入）
 
 引入协调 Agent（Orchestrator Agent），Agent 间可传递分析结果。例如 StaticAgent 发现高风险文件后通知 GitAgent 聚焦分析该文件的变更历史。
 
