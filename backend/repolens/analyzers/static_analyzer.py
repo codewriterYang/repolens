@@ -105,11 +105,15 @@ class StaticAnalyzer:
     # 公开入口
     # ------------------------------------------------------------------
 
-    async def run(self, repo_path: str) -> StaticResult:
+    async def run(self, repo_path: str, strategy_mode: str = "full") -> StaticResult:
         """对给定仓库路径执行静态分析。
 
         参数:
             repo_path: 克隆仓库的绝对路径。
+            strategy_mode: "full" | "focused" | "fast"
+            - full: 完整 pylint + radon
+                - focused: 核心文件 pylint + 全量 radon
+                - fast: 仅 radon cc（跳过 pylint）
 
         返回:
             包含复杂度热点、文件热力图、风险摘要和 pylint 评分的
@@ -126,30 +130,49 @@ class StaticAnalyzer:
                     error="仓库中未找到 Python 文件",
                 )
 
+            # --- 根据策略决定 pylint 扫描的文件范围 ---
+            if strategy_mode == "fast":
+                # fast 模式：不运行 pylint，仅 radon
+                pylint_files: list[str] = []
+                logger.info("StaticAnalyzer: fast 模式 — 跳过 pylint，仅 radon cc")
+            elif strategy_mode == "focused":
+                # focused 模式：排除测试文件
+                pylint_files = [
+                    f for f in py_files
+                    if not self._is_test_file(f)
+                ]
+                if len(pylint_files) < len(py_files):
+                    logger.info(
+                        "StaticAnalyzer: focused 模式 — pylint 目标 %d/%d 文件",
+                        len(pylint_files), len(py_files),
+                    )
+            else:
+                # full 模式：全部文件
+                pylint_files = py_files
+
             # ------------------------------------------------------------------
-            # 阶段 A：并行运行 pylint（JSON 消息 + 文本评分）和 radon。
-            #         三个独立的子进程。
+            # 阶段 A：并行运行 pylint 和 radon。
             # ------------------------------------------------------------------
-            pylint_json_task = self._run_pylint_json(repo_path, py_files)
-            pylint_score_task = self._run_pylint_score(repo_path, py_files)
             radon_task = self._run_radon(repo_path)
 
-            pylint_messages_raw, pylint_scores_raw, radon_functions = (
-                await asyncio.gather(
-                    pylint_json_task,
-                    pylint_score_task,
-                    radon_task,
-                    return_exceptions=True,
+            if pylint_files:
+                pylint_json_task = self._run_pylint_json(repo_path, pylint_files)
+                pylint_score_task = self._run_pylint_score(repo_path, pylint_files)
+                pylint_messages_raw, pylint_scores_raw, radon_functions = (
+                    await asyncio.gather(
+                        pylint_json_task,
+                        pylint_score_task,
+                        radon_task,
+                        return_exceptions=True,
+                    )
                 )
-            )
-
-            # ------------------------------------------------------------------
-            # 阶段 B：规范化 — 将异常解包为空的默认值。
-            # 每个子分析器失败是独立的。
-            # ------------------------------------------------------------------
-            pylint_output = self._unwrap_pylint(
-                pylint_messages_raw, pylint_scores_raw
-            )
+                pylint_output = self._unwrap_pylint(
+                    pylint_messages_raw, pylint_scores_raw
+                )
+            else:
+                # fast 模式：跳过 pylint
+                radon_functions = await radon_task
+                pylint_output = _PylintOutput(overall_score=None)
 
             high_complexity: list[FunctionRisk] = (
                 []
@@ -208,6 +231,25 @@ class StaticAnalyzer:
             return files
 
         return await asyncio.to_thread(_find)
+
+    # ------------------------------------------------------------------
+    # 策略辅助
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _is_test_file(filepath: str) -> bool:
+        """检查是否为测试文件（用于 focused 模式排除）。"""
+        import os
+        name = os.path.basename(filepath)
+        # 文件名模式匹配
+        test_patterns = ("test_", "_test.py", "tests.py")
+        for pat in test_patterns:
+            if pat in name:
+                return True
+        # 路径中包含 test/tests 目录
+        normalized = filepath.replace("\\", "/")
+        parts = normalized.split("/")
+        return any(p in ("tests", "test") for p in parts)
 
     # ------------------------------------------------------------------
     # pylint — JSON 消息（逐行 lint 问题）

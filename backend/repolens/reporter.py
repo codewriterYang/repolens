@@ -39,6 +39,7 @@ class Reporter:
         repo_result: Optional[RepoResult],
         git_result: Optional[GitResult],
         pipeline_start: float,
+        strategy: str = "full",
     ) -> ReportJson:
         """生成最终分析报告。
 
@@ -49,6 +50,7 @@ class Reporter:
             repo_result: RepoAnalyzer 产出（或 None）。
             git_result: GitAnalyzer 产出（或 None）。
             pipeline_start: 流水线启动时的 time.monotonic()。
+            strategy: 当前分析策略（full/focused/fast）。
 
         返回：
             包含健康评分、建议和 HTML 的完整 ReportJson。
@@ -63,7 +65,7 @@ class Reporter:
         html = self._build_html(
             job_id, repo_url, health_score, score_breakdown,
             static_result, repo_result, git_result,
-            recommendations,
+            recommendations, strategy,
         )
 
         return ReportJson(
@@ -75,6 +77,7 @@ class Reporter:
             git_analysis=git_result,
             recommendations=recommendations,
             html_report=html,
+            strategy=strategy,
             total_duration_ms=int((time.monotonic() - pipeline_start) * 1000),
             created_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         )
@@ -305,6 +308,7 @@ class Reporter:
         repo_result: Optional[RepoResult],
         git_result: Optional[GitResult],
         recommendations: list[Recommendation],
+        strategy: str = "full",
     ) -> str:
         """生成自包含的行内 HTML 报告。
 
@@ -415,6 +419,9 @@ function toggleAllRisk(show) {{
 </div>
 </div>
 
+<!-- ====== 分析策略 ====== -->
+{Reporter._html_strategy(strategy)}
+
 <!-- ====== 改进建议 ====== -->
 <h2>改进建议 <span class="meta">({len(recommendations)} 条)</span></h2>
 <div class="card">
@@ -443,6 +450,29 @@ function toggleAllRisk(show) {{
 由 RepoLens 生成 &mdash; {datetime.now().strftime('%Y-%m-%d %H:%M')}
 </footer>
 </div>
+<script>
+// 向父窗口报告实际内容高度。
+// 持续重发（最多 20 次/6 秒），确保切回页面时也能收到。
+document.addEventListener('DOMContentLoaded', function() {{
+  var count = 0;
+  var maxRetries = 20;
+  var report = function() {{
+    var h = Math.max(
+      document.body.scrollHeight,
+      document.body.offsetHeight,
+      document.documentElement.clientHeight,
+      document.documentElement.scrollHeight,
+      document.documentElement.offsetHeight
+    );
+    if (window.parent && window.parent !== window) {{
+      window.parent.postMessage({{ type: 'repolens-height', height: h }}, '*');
+    }}
+    count++;
+    if (count < maxRetries) setTimeout(report, 300);
+  }};
+  setTimeout(report, 100);
+}});
+</script>
 </body>
 </html>"""
 
@@ -474,6 +504,27 @@ function toggleAllRisk(show) {{
                 f'</div>'
             )
         return "\n".join(parts)
+
+    @staticmethod
+    def _html_strategy(strategy: str) -> str:
+        """渲染分析策略说明。"""
+        if not strategy or strategy == "full":
+            return ""
+        labels = {
+            "focused": ("Focused Analysis", "75%", "Test files excluded. Production code received priority analysis."),
+            "fast": ("Fast Analysis", "50%", "Pylint skipped for performance. Complexity analysis only."),
+        }
+        info = labels.get(strategy)
+        if not info:
+            return ""
+        label, conf, desc = info
+        return (
+            '<h2>分析策略</h2>'
+            '<div class="card">'
+            f'<p><strong>{label}</strong> · 置信度 {conf}</p>'
+            f'<p class="meta">{desc}</p>'
+            '</div>'
+        )
 
     @staticmethod
     def _html_recommendations(recs: list[Recommendation]) -> str:

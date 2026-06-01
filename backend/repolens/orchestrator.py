@@ -2,12 +2,15 @@
 
 设计：
 - 接收 job_id 和 repo_url，异步执行完整流水线。
-- 三个分析器并行运行（asyncio.gather），各自有独立超时。
-- Reporter 在分析器完成后串行运行。
+- 三个 Agent 通过 AgentRegistry 并行调度，各自有独立超时。
+- Reporter 在 Agent 完成后串行运行。
 - 状态更新写入数据库供前端轮询。
-- 优雅降级：单个分析器失败不会导致整体崩溃。
+- 优雅降级：单个 Agent 失败不会导致整体崩溃。
 - 流水线级超时防止失控任务。
 - 结构化日志追踪执行过程。
+
+v2.0: Agent 架构 — 分析器通过 BaseAgent 接口统一包装，
+由 AgentRegistry 注册和调度，Orchestrator 不再直接持有分析器实例。
 """
 
 from __future__ import annotations
@@ -20,15 +23,15 @@ from typing import Optional
 
 import aiosqlite
 
-from .analyzers.git_analyzer import GitAnalyzer
-from .analyzers.repo_analyzer import RepoAnalyzer
-from .analyzers.static_analyzer import StaticAnalyzer
+from .agents import AgentRegistry, GitAgent, PlannerAgent, RepoAgent, StaticAgent
 from .cloner import CloneError, RepoCloner
 from .config import config
+from .context import ContextManager
 from .db import save_partial_results, save_report, update_job_status
 from .llm_service import LLMService
+from .memory import MemoryManager
 from .reporter import Reporter
-from .schemas import GitResult, JobStatus, RepoResult, StaticResult
+from .schemas import AnalysisPlan, AnalysisStrategy, GitResult, JobStatus, RepoResult, StaticResult
 
 logger = logging.getLogger(__name__)
 
@@ -57,11 +60,35 @@ class Orchestrator:
     def __init__(self, db: aiosqlite.Connection, llm: LLMService):
         self._db = db
         self._llm = llm
-        self._static = StaticAnalyzer()
-        self._repo = RepoAnalyzer(llm)
-        self._git = GitAnalyzer()
         self._reporter = Reporter()
         self._cloner = RepoCloner()
+
+        # --- v2.0: Agent 架构 ---
+        # Agent 通过 Registry 注册，Orchestrator 不再直接持有分析器实例。
+        self._registry = AgentRegistry()
+
+        # --- v2.3: PlannerAgent（Phase 5，第一个协作 Agent）---
+        self._planner = PlannerAgent()
+        self._registry.register(self._planner)
+
+        self._registry.register(StaticAgent())
+        self._registry.register(RepoAgent(llm))
+        self._registry.register(GitAgent())
+
+        # --- v2.1: Context 层 ---
+        # ContextManager 负责创建和校验分析上下文，
+        # Agent 通过 RepositoryContext 获取所需信息。
+        self._ctx_manager = ContextManager()
+
+        # --- v2.2: Memory 层 ---
+        # MemoryManager 负责每个流水线的 SharedMemory 生命周期，
+        # Agent 通过 SharedMemory 共享中间分析结果。
+        self._mem_manager = MemoryManager()
+
+        logger.debug(
+            "Orchestrator 已注册 %d 个 Agent: %s",
+            len(self._registry), self._registry.list(),
+        )
 
     # ------------------------------------------------------------------
     # 公开接口
@@ -129,11 +156,26 @@ class Orchestrator:
             job_id, time.monotonic() - t0, repo_path,
         )
 
-        # --- 阶段二：并行分析 --------------------------------------------
+        # --- 阶段二：Agent 协作（v2.3: Planner → Memory → Analyzers） --
         await self._set_status(job_id, JobStatus.ANALYZING, 20, "正在分析代码...")
+        # 创建分析上下文和共享记忆
+        context = self._ctx_manager.create(repo_url, repo_path, job_id)
+        memory = self._mem_manager.create()
+        self._registry.inject_memory(memory)
+
+        # Phase 7: PlannerAgent 动态制定分析计划
+        plan = await self._run_planner(job_id, context)
+
+        # 根据 Plan 动态执行分析 Agent
         static_result, repo_result, git_result, analyzer_durations = (
-            await self._run_analyzers(job_id, repo_path, repo_url)
+            await self._run_analyzers(job_id, context, plan)
         )
+
+        logger.debug(
+            "流水线 [%s] Memory 使用: %d 条记录",
+            job_id, len(memory),
+        )
+        self._mem_manager.clear()
         logger.info(
             "流水线 [%s] 分析器完成: static=%s repo=%s git=%s 耗时=%s",
             job_id,
@@ -158,6 +200,7 @@ class Orchestrator:
             repo_result=repo_result,
             git_result=git_result,
             pipeline_start=pipeline_start,
+            strategy=plan.strategy.static if plan and hasattr(plan, "strategy") else "full",
         )
         logger.info(
             "流水线 [%s] 报告生成 (%.1fs) score=%d 建议=%d",
@@ -170,33 +213,71 @@ class Orchestrator:
         logger.info("流水线 [%s] 报告已持久化", job_id)
 
     # ------------------------------------------------------------------
+    # Planner 执行（Phase 5）
+    # ------------------------------------------------------------------
+
+    async def _run_planner(
+        self, job_id: str, context,
+    ) -> AnalysisPlan:
+        """运行 PlannerAgent，返回动态分析计划。
+
+        Phase 7: Planner 失败时返回默认计划（全部执行）。
+        """
+        try:
+            plan = await asyncio.wait_for(
+                self._planner.run(context),
+                timeout=30,
+            )
+            logger.info(
+                "流水线 [%s] Planner 完成: tasks=%s strategy=%s",
+                job_id, plan.tasks, plan.strategy.model_dump(),
+            )
+            return plan
+        except asyncio.TimeoutError:
+            logger.warning("流水线 [%s] Planner 超时，使用默认计划", job_id)
+        except Exception as exc:
+            logger.warning("流水线 [%s] Planner 失败: %s", job_id, exc)
+        # 降级：默认 full 策略全部执行
+        return AnalysisPlan(
+            tasks=["static_analysis", "repo_analysis", "git_analysis"],
+            strategy=AnalysisStrategy(static="full", repo="full", git="full"),
+            priority="normal",
+        )
+
+    # ------------------------------------------------------------------
     # 分析器执行
     # ------------------------------------------------------------------
 
     async def _run_analyzers(
-        self, job_id: str, repo_path: str, repo_url: str,
+        self, job_id: str, context, plan: AnalysisPlan,
     ) -> tuple[
         Optional[StaticResult],
         Optional[RepoResult],
         Optional[GitResult],
         dict[str, float],
     ]:
-        """并行运行全部三个分析器，各自有独立超时。
+        """执行所有分析 Agent，各自有独立超时。
 
-        每个分析器的失败独立 — 一个失败不会阻碍其他分析器。
-        Reporter 优雅处理缺失的结果。
+        Phase 8: 所有 Agent 始终执行，不再 skip。
+        StaticAgent 从 AnalysisPlan.strategy.static 选择分析深度。
 
-        返回：
+        参数:
+            job_id: 分析任务 ID。
+            context: RepositoryContext，通过 AgentRegistry 传递给各 Agent。
+            plan: AnalysisPlan，含 strategy 字段决定各 Agent 执行模式。
+
+        返回:
             (static_result, repo_result, git_result, durations_dict) 元组。
-            durations_dict 映射分析器名称 → 耗时（秒）。
+            durations_dict 映射 Agent 名称 → 耗时（秒）。
         """
         durations: dict[str, float] = {}
 
         async def run_static() -> Optional[StaticResult]:
             t0 = time.monotonic()
+            agent = self._registry.get("static")
             try:
                 result = await asyncio.wait_for(
-                    self._static.run(repo_path), timeout=_TIMEOUT_STATIC,
+                    agent.run(context), timeout=_TIMEOUT_STATIC,
                 )
                 durations["static"] = time.monotonic() - t0
                 if result.error:
@@ -223,9 +304,10 @@ class Orchestrator:
 
         async def run_repo() -> Optional[RepoResult]:
             t0 = time.monotonic()
+            agent = self._registry.get("repo")
             try:
                 result = await asyncio.wait_for(
-                    self._repo.run(repo_path, repo_url), timeout=_TIMEOUT_REPO,
+                    agent.run(context), timeout=_TIMEOUT_REPO,
                 )
                 durations["repo"] = time.monotonic() - t0
                 if result.error:
@@ -251,10 +333,12 @@ class Orchestrator:
                 return RepoResult(error=f"仓库分析失败: {exc}")
 
         async def run_git() -> Optional[GitResult]:
+            # git_analysis 始终执行（规则引擎不会跳过）
             t0 = time.monotonic()
+            agent = self._registry.get("git")
             try:
                 result = await asyncio.wait_for(
-                    self._git.run(repo_path), timeout=_TIMEOUT_GIT,
+                    agent.run(context), timeout=_TIMEOUT_GIT,
                 )
                 durations["git"] = time.monotonic() - t0
                 if result.error:

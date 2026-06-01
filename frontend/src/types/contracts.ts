@@ -155,6 +155,7 @@ export interface ReportJson {
   git_analysis?: GitResult | null;
   recommendations: Recommendation[];
   html_report: string;
+  strategy: string;
   total_duration_ms: number;
   created_at: string;
 }

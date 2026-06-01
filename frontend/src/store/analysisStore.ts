@@ -35,6 +35,8 @@ export interface AnalysisState {
   startJob: (jobId: string, repoUrl: string) => void;
   updateProgress: (data: StatusResponse) => void;
   setReport: (report: ReportJson) => void;
+  completeJob: (report: ReportJson) => void;
+  clearReport: () => void;
   markFailed: (errorMsg: string) => void;
   reset: () => void;
 }
@@ -81,13 +83,22 @@ export const useAnalysisStore = create<AnalysisState>((set) => ({
       error: data.error_msg ?? null,
     }),
 
+  // 查看历史报告 — 仅设置 report，不改变当前任务状态
   setReport: (report) =>
+    set({ report }),
+
+  // 当前任务完成 — 同步设置完成状态
+  completeJob: (report) =>
     set({
       report,
       status: 'completed',
       progressPct: 100,
       stageLabel: '分析完成',
     }),
+
+  // 清除当前显示的报告（切回实时监控视图）
+  clearReport: () =>
+    set({ report: null }),
 
   markFailed: (errorMsg) =>
     set({

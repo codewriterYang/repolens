@@ -216,6 +216,89 @@ class GitResult(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+class AnalysisStrategy(BaseModel):
+    """分析策略 — 决定各 Agent 如何运行（非是否运行）。
+
+    v2.6 (Phase 8): 从 skip-task 模式升级为 strategy 模式。
+    所有 Agent 始终执行，但根据仓库规模选择分析深度。
+
+    static 策略:
+        - "full": 完整 pylint + radon（≤500 文件）
+        - "focused": 核心文件 pylint + 全量 radon（501-1000 文件）
+        - "fast": 仅 radon cc 快速扫描（>1000 文件）
+
+    repo / git: 始终 "full"
+    """
+
+    static: str = Field(default="full", description="full | focused | fast")
+    repo: str = Field(default="full", description="repo 始终保持 full")
+    git: str = Field(default="full", description="git 始终保持 full")
+
+    @property
+    def static_confidence(self) -> int:
+        """静态分析的置信度百分比。"""
+        return {"full": 100, "focused": 75, "fast": 50}.get(self.static, 100)
+
+
+class AnalysisPlan(BaseModel):
+    """PlannerAgent 产出的分析计划。
+
+    v2.6 (Phase 8): 新增 strategy 字段。
+    从"决定跳过哪些任务"升级为"决定各 Agent 如何运行"。
+    skipped_tasks / reasons 保留向后兼容，但 Orchestrator 不再使用。
+    """
+
+    tasks: list[str] = Field(
+        default_factory=lambda: ["static_analysis", "repo_analysis", "git_analysis"],
+        description="待执行的分析任务列表（始终全量）",
+    )
+    strategy: AnalysisStrategy = Field(
+        default_factory=AnalysisStrategy,
+        description="各 Agent 的执行策略（full/focused/fast）",
+    )
+    skipped_tasks: list[str] = Field(
+        default_factory=list,
+        description="（已弃用）被跳过的分析任务列表，保留向后兼容",
+    )
+    reasons: dict[str, str] = Field(
+        default_factory=dict,
+        description="（已弃用）跳过原因，现改为 strategy 选择理由",
+    )
+    priority: str = Field(default="normal", description="normal 或 high")
+
+
+class ReportResult(BaseModel):
+    """ReportAgent 产出的汇总报告。
+
+    从 SharedMemory 读取各 Agent 的分析结果后生成，
+    包含结构化 JSON 摘要和可渲染 HTML。
+    """
+
+    repo_name: str = Field(default="", description="仓库名")
+    repo_url: str = Field(default="", description="仓库 URL")
+    analysis_id: str = Field(default="", description="分析任务 ID")
+
+    # 摘要统计
+    total_files_scanned: int = 0
+    pylint_score: float | None = None
+    total_commits: int = 0
+    unique_contributors: int = 0
+    ci_cd_detected: bool = False
+    readme_quality_score: int = 0
+
+    # Agent 状态
+    agents_available: list[str] = Field(default_factory=list)
+
+    # 分析策略
+    strategy: str = Field(
+        default="full",
+        description="当前 static 分析策略: full | focused | fast",
+    )
+
+    # HTML 报告（可折叠结构）
+    html_report: str = Field(default="", description="自包含 HTML 报告")
+
+
 class Recommendation(BaseModel):
     """最终报告中的一条可操作改进建议。"""
 
@@ -241,6 +324,10 @@ class ReportJson(BaseModel):
     git_analysis: Optional[GitResult] = None
     recommendations: list[Recommendation] = Field(default_factory=list)
     html_report: str = ""
+    strategy: str = Field(
+        default="full",
+        description="当前分析策略: full | focused | fast",
+    )
     total_duration_ms: int = 0
     created_at: str = Field(
         default_factory=lambda: datetime.now().strftime("%Y-%m-%d %H:%M:%S")

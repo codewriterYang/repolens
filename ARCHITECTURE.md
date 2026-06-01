@@ -66,6 +66,143 @@ StaticResult        RepoResult                GitResult
                     git_analysis）
 ```
 
+## Agent 架构（v2.0）
+
+v2.0 引入了 Agent 抽象层，将三个分析器通过统一接口包装。
+
+### BaseAgent 接口
+
+```python
+class BaseAgent(ABC):
+    name: str
+
+    @abstractmethod
+    async def run(self, context: RepositoryContext, **kwargs: Any) -> Any:
+        ...
+```
+
+### Agent 实现
+
+| Agent | 封装的分析器 | 从 Context 获取 |
+|-------|-------------|----------------|
+| `StaticAgent` | `StaticAnalyzer` | `context.repo_path` |
+| `RepoAgent` | `RepoAnalyzer` | `context.repo_path`, `context.repo_url` |
+| `GitAgent` | `GitAnalyzer` | `context.repo_path` |
+
+每个 Agent 是纯包装层 — 内部直接委托给对应 Analyzer，
+不修改原有分析逻辑。v2.1 起通过 `RepositoryContext` 获取参数。
+
+### AgentRegistry 设计
+
+```
+AgentRegistry
+├── register(agent)     # 按 name 注册 Agent
+├── get(name) → Agent   # 按名称获取
+├── list() → [str]      # 列出已注册名称
+└── run_all(tasks, ctx) # 并行调度多个 Agent（统一传递 Context）
+```
+
+Orchestrator 通过 AgentRegistry 获取和调度 Agent，
+不再直接持有分析器实例。这为后续 Agent 热插拔、
+动态启停提供了基础。
+
+## Context 层（v2.1）
+
+v2.1 引入了 Context 抽象层，在 Agent 和 Orchestrator 之间
+插入不可变的上下文对象，解耦参数传递。
+
+### RepositoryContext
+
+```python
+@dataclass(frozen=True)
+class RepositoryContext:
+    repo_url: str        # 原始仓库 URL
+    repo_path: str       # 克隆后的本地路径
+    repo_name: str       # 仓库名（从 URL 提取）
+    analysis_id: str     # 唯一 job_id
+    started_at: datetime # 分析启动时间
+```
+
+`frozen=True` 保证上下文在分析过程中不可被任何 Agent 修改。
+
+### ContextManager
+
+```
+ContextManager
+├── create(repo_url, repo_path, job_id) → RepositoryContext
+├── validate(ctx)                        → 校验完整性
+└── create_and_validate(...)             → 创建 + 校验
+```
+
+Orchestrator 在克隆完成后调用 `ContextManager.create()` 构建上下文，
+通过 AgentRegistry 统一传递给三个 Agent。
+
+### 架构层次
+
+```
+Orchestrator
+  ├─→ ContextManager.create()       ──→ RepositoryContext
+  ├─→ MemoryManager.create()        ──→ SharedMemory
+  └─→ AgentRegistry.inject_memory(memory)
+       └─→ AgentRegistry.get("static")  ──→ StaticAgent.run(ctx)
+           AgentRegistry.get("repo")    ──→ RepoAgent.run(ctx)
+           AgentRegistry.get("git")     ──→ GitAgent.run(ctx)
+                ↓
+           Agent 可通过 self.memory.set/get 共享数据
+```
+
+## Memory 层（v2.2）
+
+v2.2 引入了 SharedMemory，Agent 可通过线程安全的键值存储
+在分析过程中共享中间结果。
+
+### SharedMemory
+
+```python
+class SharedMemory:
+    set(key, value) → None       # 写入
+    get(key, default=None) → Any # 读取
+    has(key) → bool              # 存在检查
+    delete(key) → None           # 删除
+    keys() → list[str]           # 所有键名
+    snapshot() → dict            # 只读快照
+    clear() → None               # 清空
+```
+
+使用 `threading.RLock` 保证线程安全，兼容 `asyncio.to_thread` 场景。
+
+### MemoryManager
+
+```python
+class MemoryManager:
+    create() → SharedMemory    # 创建新 Memory 实例
+    clear() → None             # 清空当前 Memory
+    get_memory() → SharedMemory|None  # 获取引用
+```
+
+Orchestrator 每次流水线调用 `create()`，结束后调用 `clear()`。
+
+### Agent 接入（Phase 5: PlannerAgent 协作）
+
+Phase 5–7 实现了完整的动态 Agent 协作链路：
+
+```
+Orchestrator → Context+Memory
+  ├─→ PlannerAgent.run(ctx)
+  │     └─→ DynamicPlanner (Profiler + Rules) → AnalysisPlan
+  │           ├─ skipped: file_count>1000→skip static, !readme→skip repo
+  │           └─→ memory.set("analysis_plan", plan)
+  ├─→ [StaticAgent | RepoAgent | GitAgent].run(ctx)  # 根据 Plan 动态跳过
+  │     └─→ memory.set("..._result", result)
+  └─→ ReportAgent.run(ctx)
+        └─→ memory.get(...) → ReportResult (含 Plan Summary)
+```
+
+Phase 7 引入 DynamicPlanner：规则引擎根据仓库特征（文件数、README）
+自动决定分析策略，Orchestrator 按 Plan 动态执行——不再硬编码三路并行。
+
+---
+
 ## 分析器设计
 
 ### StaticAnalyzer（静态分析器）
@@ -87,8 +224,8 @@ StaticResult        RepoResult                GitResult
 ### GitAnalyzer（Git 分析器）
 
 - **目的**：Git 历史活动、贡献者统计、CI/CD 检测
-- **工具**：4 个 git 子进程（`rev-list`、`shortlog`、`log`、`log --name-only`）
-- **策略**：所有子进程通过 `asyncio.gather` 并发运行
+- **工具**：4 个 git 子进程（`rev-list`、`shortlog`、`log`、`log --name-only`）+ 1 个文件系统 CI 检查
+- **策略**：所有 5 个任务通过 `asyncio.gather` 并发运行
 - **产出**：`GitResult`，包含提交数、贡献者、活动时间线、活跃文件、CI/CD 状态
 - **降级**：每个子进程独立捕获异常；部分数据即可用
 

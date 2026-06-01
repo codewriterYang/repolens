@@ -1,5 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { useCallback, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { ReportJson } from '@/types/contracts';
 
 export interface ReportViewerProps {
@@ -21,18 +21,23 @@ export function ReportViewer({ report }: ReportViewerProps) {
     (report.repo_analysis && !report.repo_analysis.error) ||
     (report.git_analysis && !report.git_analysis.error);
 
-  // iframe 加载后测量内容实际高度
-  const onIframeLoad = useCallback(() => {
-    try {
-      const doc = iframeRef.current?.contentDocument;
-      if (doc) {
-        const h = doc.documentElement.scrollHeight;
-        if (h > 0) setIframeHeight(h + 16);
+  // 通过 postMessage 监听 iframe 内容实际高度
+  // sandbox="allow-scripts" 禁止 contentDocument 跨域访问，
+  // 由 HTML 内的脚本通过 postMessage 主动上报高度。
+  useEffect(() => {
+    setIframeHeight(800); // 切换报告时重置高度
+    const handleMessage = (event: MessageEvent) => {
+      if (
+        event.data?.type === 'repolens-height' &&
+        typeof event.data.height === 'number' &&
+        event.data.height > 0
+      ) {
+        setIframeHeight(event.data.height + 16);
       }
-    } catch {
-      // 被 sandbox 限制时保留默认高度
-    }
-  }, []);
+    };
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, [report.html_report]);
 
   return (
     <div className="space-y-6">
@@ -40,7 +45,14 @@ export function ReportViewer({ report }: ReportViewerProps) {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center justify-between">
-            <span>分析报告</span>
+            <div className="flex items-center gap-2">
+              <span>分析报告</span>
+              {report.strategy && report.strategy !== 'full' && (
+                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+                  Strategy: {report.strategy}
+                </span>
+              )}
+            </div>
             <span className={`rounded-full px-3 py-1 text-xs font-semibold bg-primary/10 ${scoreColor(report.health_score)}`}>
               健康度 {report.health_score}
             </span>
@@ -139,7 +151,6 @@ export function ReportViewer({ report }: ReportViewerProps) {
               ref={iframeRef}
               srcDoc={report.html_report}
               sandbox="allow-scripts"
-              onLoad={onIframeLoad}
               scrolling="no"
               style={{
                 width: '100%',

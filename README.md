@@ -4,13 +4,13 @@
 
 ## 项目简介
 
-RepoLens 对克隆的仓库并行运行三个独立分析器：
+RepoLens 对克隆的仓库并行运行三个 Agent（静态/仓库/Git），通过 AgentRegistry 统一调度：
 
-| 分析器 | 检查内容 | 产出 |
+| Agent（底层分析器） | 检查内容 | 产出 |
 |--------|---------|------|
-| **StaticAnalyzer（静态分析）** | Pylint + Radon 圈复杂度 | 高风险文件、复杂函数、lint 热力图 |
-| **RepoAnalyzer（仓库分析）** | README + 目录树 + 包元数据（LLM 推理） | 使用模式、核心模块、推断风险 |
-| **GitAnalyzer（Git 分析）** | `git log`、`git shortlog`、CI/CD 配置 | 提交历史、贡献者、活动时间线 |
+| **StaticAgent（StaticAnalyzer）** | Pylint + Radon 圈复杂度 | 高风险文件、复杂函数、lint 热力图 |
+| **RepoAgent（RepoAnalyzer）** | README + 目录树 + 包元数据（LLM 推理） | 使用模式、核心模块、推断风险 |
+| **GitAgent（GitAnalyzer）** | `git log`、`git shortlog`、CI/CD 配置 | 提交历史、贡献者、活动时间线 |
 
 **Reporter（报告生成器）** 将所有结果合并为自包含的 HTML 报告，包含可折叠区域、行内图表和优先排序的改进建议。
 
@@ -20,13 +20,14 @@ RepoLens 对克隆的仓库并行运行三个独立分析器：
 POST /api/analyze
        │
        ▼
-   Orchestrator（异步编排）
+   Orchestrator（异步编排 + AgentRegistry + ContextManager）
        │
-       ├──▶ git clone（30秒超时）
+       ├──▶ git clone（300s 超时）
+       │     └─→ ContextManager.create()
        │
-       ├──▶ StaticAnalyzer ──┐
-       ├──▶ RepoAnalyzer   ──┼── 并行（asyncio.gather）
-       └──▶ GitAnalyzer    ──┘
+       ├──▶ StaticAgent ←─┐
+       ├──▶ RepoAgent   ←─┼── Context 统一传递
+       └──▶ GitAgent    ←─┘
               │
               ▼
           Reporter（报告生成）
@@ -35,9 +36,9 @@ POST /api/analyze
        GET /api/report/{job_id}
 ```
 
-三个分析器互相独立 — 任何一个失败都不会阻碍其他分析器。Reporter 优雅处理缺失结果，部分结果在流水线运行期间可通过 `GET /api/status/{job_id}` 获取。
+三个 Agent 互相独立 — 任何一个失败都不会阻碍其他 Agent。Reporter 优雅处理缺失结果，部分结果在流水线运行期间可通过 `GET /api/status/{job_id}` 获取。
 
-> 📖 更多文档：[架构设计](./ARCHITECTURE.md) · [工作流程详解](./WORKFLOW.md)
+> 📖 文档导航：[架构设计](./ARCHITECTURE.md) · [工作流程](./WORKFLOW.md) · [技术选型](./DECISIONS.md) · [演进日志](./docs/EVOLUTION_LOG.md) · [架构图](./docs/architecture/) · [ADR](./docs/adr/) · [测试](./docs/testing/) · [案例](./docs/case-studies/)
 
 ## 快速开始
 
@@ -61,13 +62,8 @@ cp .env.example .env
 
 ```bash
 cd backend
-pip install -r requirements.txt
-```
-
-开发工具可选安装（lint/测试）：
-
-```bash
-pip install -r requirements.txt pytest pytest-asyncio ruff
+pip install -e .        # 生产依赖
+pip install -e ".[dev]" # 含 pytest + ruff（开发用）
 ```
 
 ### 3. 启动后端
@@ -150,11 +146,30 @@ repolens/
 │   │   ├── reporter.py        # HTML 报告生成器
 │   │   ├── cloner.py          # Git 克隆/清理工具
 │   │   ├── llm_service.py     # OpenAI 兼容 LLM 客户端
+│   │   ├── agents/              # Agent 层（v2.0）
+│   │   │   ├── base.py          # BaseAgent 抽象基类
+│   │   │   ├── registry.py      # AgentRegistry 注册中心
+│   │   │   ├── planner_agent.py # PlannerAgent（策略制定，Phase 5）
+│   │   │   ├── static_agent.py  # 封装 StaticAnalyzer
+│   │   │   ├── repo_agent.py    # 封装 RepoAnalyzer
+│   │   │   ├── git_agent.py     # 封装 GitAnalyzer
+│   │   │   └── report_agent.py  # ReportAgent（汇总报告，Phase 6）
+│   │   ├── context/             # Context 层（v2.1）
+│   │   │   ├── base.py          # RepositoryContext 不可变上下文
+│   │   │   ├── repository_context.py  # 上下文工厂函数
+│   │   │   └── context_manager.py     # ContextManager 生命周期
+│   │   ├── memory/              # Memory 层（v2.2）
+│   │   │   ├── base.py          # SharedMemory 线程安全 KV 存储
+│   │   │   ├── shared_memory.py # 辅助函数
+│   │   │   └── memory_manager.py     # MemoryManager 生命周期
+│   │   ├── planner/             # Planner 层（v2.5，动态策略引擎）
+│   │   │   ├── repository_profiler.py # 仓库特征分析
+│   │   │   ├── planning_rules.py      # 规则引擎
+│   │   │   └── dynamic_planner.py     # 动态策略编排
 │   │   └── analyzers/
 │   │       ├── static_analyzer.py  # Pylint + Radon
 │   │       ├── repo_analyzer.py    # README + 目录树 + LLM
 │   │       └── git_analyzer.py     # Git 活动 + CI/CD
-│   ├── requirements.txt
 │   ├── pyproject.toml
 │   └── README.md
 ├── frontend/                  # React + TypeScript 界面
@@ -172,8 +187,34 @@ repolens/
 ├── samples/                   # 推荐测试仓库列表
 ├── ARCHITECTURE.md            # 系统架构文档
 ├── WORKFLOW.md                # 完整工作流程详解
+├── DECISIONS.md               # 技术选型说明
+├── docs/
+│   └── EVOLUTION_LOG.md       # 项目演进日志
 └── README.md
 ```
+
+## Agent 工作流
+
+```
+POST /api/analyze
+  → Clone → ContextManager → MemoryManager
+  → PlannerAgent (strategy: full/focused/fast)
+  → StaticAgent ╗
+  → RepoAgent   ║ 并行执行
+  → GitAgent    ╝
+  → Reporter → ReportJson → SQLite
+  → GET /api/report/{id}
+```
+
+### 策略引擎
+
+仓库规模决定 StaticAgent 的执行深度（所有 Agent 始终执行，不跳过）：
+
+| 文件数 | 策略 | 置信度 | 行为 |
+|--------|------|--------|------|
+| ≤ 500 | full | 100% | 完整 pylint + radon |
+| 501–1000 | focused | 75% | 排除测试文件 pylint + 全量 radon |
+| > 1000 | fast | 50% | 仅 radon cc |
 
 ## 设计原则
 
@@ -182,6 +223,21 @@ repolens/
 - **自包含输出** — HTML 报告零外部依赖（无 CDN、无 JS 框架）
 - **跨平台兼容** — 子进程通过 `subprocess.run` + `asyncio.to_thread` 执行，兼容 Windows/Linux/macOS
 - **可配置超时** — 分析器级和流水线级超时防止失控任务
+
+## 文档导航
+
+| 文档 | 说明 |
+|------|------|
+| [ARCHITECTURE.md](./ARCHITECTURE.md) | 系统架构设计 |
+| [WORKFLOW.md](./WORKFLOW.md) | 完整分析工作流程 |
+| [DECISIONS.md](./DECISIONS.md) | 技术选型说明 |
+| [docs/EVOLUTION_LOG.md](./docs/EVOLUTION_LOG.md) | 项目演进日志 |
+| [docs/architecture/](./docs/architecture/) | 架构图（Mermaid） |
+| [docs/adr/](./docs/adr/) | 架构决策记录（ADR） |
+| [docs/testing/](./docs/testing/) | 测试报告 |
+| [docs/case-studies/](./docs/case-studies/) | 真实案例分析 |
+| [docs/performance/](./docs/performance/) | 性能基准 |
+| [samples/](./samples/) | 推荐测试仓库 |
 
 ## 配置说明
 
