@@ -10,7 +10,7 @@ import type { AnalyzeRequest } from '@/types/contracts';
 const POLL_INTERVAL_MS = 2000;
 
 export function useAnalysisJob() {
-  const { startJob, updateProgress, setReport, markFailed, reset } =
+  const { startJob, updateProgress, completeJob, markFailed, reset } =
     useAnalysisStore();
 
   const jobId = useAnalysisStore((s) => s.jobId);
@@ -56,13 +56,13 @@ export function useAnalysisJob() {
               stopPolling();
               try {
                 const report = await fetchReportJson(resp.job_id);
-                setReport(report);
+                completeJob(report);
               } catch {
                 // 报告可能尚未就绪，重试一次
                 setTimeout(async () => {
                   try {
                     const report = await fetchReportJson(resp.job_id);
-                    setReport(report);
+                    completeJob(report);
                   } catch {
                     markFailed('无法加载分析报告');
                   }
@@ -80,7 +80,7 @@ export function useAnalysisJob() {
         markFailed(err instanceof Error ? err.message : '提交分析请求失败');
       }
     },
-    [startJob, updateProgress, setReport, markFailed, reset, stopPolling],
+    [startJob, updateProgress, completeJob, markFailed, reset, stopPolling],
   );
 
   return { submit, jobId, status };

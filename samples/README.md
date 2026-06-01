@@ -9,8 +9,10 @@
 | [psf/requests](https://github.com/psf/requests) | 小（~200 文件） | 快速冒烟测试，克隆快，全面验证所有分析器 |
 | [pallets/flask](https://github.com/pallets/flask) | 小（~150 文件） | 经典 Web 框架，测试 pylint 评分 |
 | [encode/httpx](https://github.com/encode/httpx) | 中（~300 文件） | 现代 HTTP 库，验证 Git 活动分析 |
-| [tiangolo/fastapi](https://github.com/tiangolo/fastapi) | 大（~1100 文件） | 大型仓库，验证超时和性能表现 |
+| [tiangolo/fastapi](https://github.com/tiangolo/fastapi) | 大（~1100 文件） | 大型仓库，验证 DynamicPlanner 跳过静态分析、超时性能 |
 | [pytest-dev/pytest](https://github.com/pytest-dev/pytest) | 大（~600 文件） | 测试框架，高提交量，验证贡献者统计 |
+
+> 💡 **Phase 7 新变化**：FastAPI 仓库超过 1000 文件阈值，DynamicPlanner 会自动跳过 `static_analysis` 以节省分析时间。想验证完整三路分析请用 600 文件以下的仓库。
 
 ## 使用方式
 

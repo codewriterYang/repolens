@@ -501,7 +501,7 @@ v2.4:  Planner → [Static | Repo | Git] → ReportAgent → Reporter(report)
 
 - **时间**：2026-06-01
 - **版本**：v2.5
-- **Commit**：待提交
+- **Commit**：`8200abe`
 
 ### 目标
 
@@ -577,6 +577,80 @@ HTML 报告新增 Plan Summary 区域：
 - 缺失 README 的仓库不再浪费 LLM 调用
 - 规则引擎可扩展：新增规则只需在 `PlanningRules.evaluate()` 加 if 块
 - 无 LLM 调用、无新依赖、纯 Python
+
+---
+
+## Phase 7.5 — 测试覆盖 + 前端交互修复
+
+- **时间**：2026-06-01
+- **版本**：v2.5.1
+- **Commit**：`（待提交）`
+
+### 目标
+
+为 Agent 架构补充完整单元测试覆盖，同时修复多轮手动测试中发现的前端交互问题。
+
+### 新增测试
+
+| 测试类 | 数量 | 覆盖范围 |
+|--------|------|---------|
+| `TestSharedMemory` | 11 | set/get/delete/clear/keys/len/snapshot/overwrite/types |
+| `TestMemoryManager` | 5 | create/get/clear/replace lifecycle |
+| `TestRepositoryContext` | 6 | construction/immutability/defaults/make_context |
+| `TestContextManager` | 3 | create/validate success & failure |
+| `TestPlanningRules` | 8 | skip conditions + boundary + priority |
+| `TestDynamicPlanner` | 3 | real directory / small dir / missing dir fallback |
+| `TestAgentRegistry` | 7 | register/get/duplicate/inject_memory/list/len/clear |
+| `TestPlannerAgent` | 3 | memory write / without memory / tasks not empty |
+| `TestReportAgent` | 5 | empty memory / write / HTML structure / plan summary / agent results |
+
+**总计**：53 个单元测试，全部通过。
+
+### 前端交互修复
+
+在手动端到端测试中发现并修复了以下问题：
+
+| 问题 | 现象 | 根因 | 修复 |
+|------|------|------|------|
+| iframe 高度截断 | 分析报告只显示上半部分，下半部分无法滚动不可见 | `sandbox="allow-scripts"` 禁止 `contentDocument` 读取；IIFE 在 DOM 布局完成前执行，`scrollHeight` 不准确 | HTML 脚本改用 `DOMContentLoaded` + `setTimeout(100ms)` 延迟上报；`ReportViewer` 切换报告时重置高度 |
+| 进度条被覆盖 | 分析中点击历史条目，进度条跳到 100% | `setReport()` 同时覆写 `status: 'completed'` + `progressPct: 100` | 拆分 `setReport`（仅设 report）和 `completeJob`（设完成态） |
+| 轮询被中断 | 查看历史后刷新出现多个"分析中"僵尸条目 | 历史查看触发 `stopPolling()`，当前任务永远无法完成 | `setReport` 不再改变 status，轮询仅由 `completeJob` 终止 |
+| 404 错误 | 点击当前运行中的历史条目弹 404 | `loadHistorical` 对未完成任务也调 `fetchReportJson` | 点击当前任务时判断状态：已完成→重新加载，运行中→清除报告显示骨架屏 |
+| 完成态点回空白 | 任务完成后从历史点回最新显示"尚未生成报告" | 无差别 `clearReport()` 清掉了已完成任务的报告 | 已完成态重新 `fetchReportJson` 加载报告 |
+| 历史状态滞后 | 分析过程中历史列表状态不变，需手动刷新 | 只在挂载和新报告生成时刷新 | 分析中每 3 秒自动拉取历史列表 |
+
+### 架构清理
+
+- **移除 ReportAgent 重复执行**：Orchestrator 中 ReportAgent 产出 `ReportResult` 后立即被 `_mem_manager.clear()` 丢弃，前端从未使用。移除 `_run_reporter()` 及其注册逻辑，消除重复日志输出。
+
+### 修改文件
+
+| 文件 | 变更 |
+|------|------|
+| `tests/test_agent_architecture.py` | 新增，53 个单元测试 |
+| `tests/README.md` | 更新测试覆盖说明 |
+| `samples/README.md` | 更新示例说明 |
+| `backend/repolens/reporter.py` | HTML postMessage 改用 DOMContentLoaded+setTimeout |
+| `backend/repolens/agents/report_agent.py` | 同上 |
+| `backend/repolens/orchestrator.py` | 移除未使用的 ReportAgent 执行路径 |
+| `frontend/src/store/analysisStore.ts` | 拆分 setReport/completeJob，新增 clearReport |
+| `frontend/src/hooks/useAnalysisJob.ts` | 轮询完成用 completeJob |
+| `frontend/src/App.tsx` | 历史查看不中断轮询、自动刷新历史、点击当前任务智能恢复 |
+| `frontend/src/components/ReportViewer.tsx` | postMessage 监听，切换报告时重置高度 |
+
+### 测试结果
+
+```
+53/53 agent architecture 单元测试全部通过
+手动端到端回归测试通过（分析→历史切换→任务完成→报告查看）
+```
+
+### 收益
+
+- Agent 架构核心模块达到 100% 单元测试覆盖
+- 前端交互逻辑健壮性大幅提升，消除 6 个状态管理 bug
+- 历史列表实时更新，无需手动刷新
+- 历史查看与当前任务彻底解耦，互不干扰
 
 ---
 

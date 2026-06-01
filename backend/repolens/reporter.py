@@ -443,6 +443,24 @@ function toggleAllRisk(show) {{
 由 RepoLens 生成 &mdash; {datetime.now().strftime('%Y-%m-%d %H:%M')}
 </footer>
 </div>
+<script>
+// 向父窗口报告实际内容高度，避免 sandbox 限制 contentDocument 读取
+// 使用 DOMContentLoaded + setTimeout 确保布局完全计算完成
+document.addEventListener('DOMContentLoaded', function() {{
+  setTimeout(function() {{
+    var h = Math.max(
+      document.body.scrollHeight,
+      document.body.offsetHeight,
+      document.documentElement.clientHeight,
+      document.documentElement.scrollHeight,
+      document.documentElement.offsetHeight
+    );
+    if (window.parent && window.parent !== window) {{
+      window.parent.postMessage({{ type: 'repolens-height', height: h }}, '*');
+    }}
+  }}, 100);
+}});
+</script>
 </body>
 </html>"""
 
