@@ -2,11 +2,12 @@
 
 保持原有分析逻辑不变，仅增加统一的 BaseAgent 接口。
 v2.1: run() 入参升级为 RepositoryContext。
+v2.2: 接入 SharedMemory。
 """
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Optional
 
 from .base import BaseAgent
 from ..analyzers.git_analyzer import GitAnalyzer
@@ -14,6 +15,7 @@ from ..schemas import GitResult
 
 if TYPE_CHECKING:
     from ..context import RepositoryContext
+    from ..memory import SharedMemory
 
 
 class GitAgent(BaseAgent):
@@ -21,7 +23,8 @@ class GitAgent(BaseAgent):
 
     name = "git"
 
-    def __init__(self) -> None:
+    def __init__(self, memory: Optional[SharedMemory] = None) -> None:
+        super().__init__(memory=memory)
         self._analyzer = GitAnalyzer()
 
     async def run(self, context: RepositoryContext, **kwargs: Any) -> GitResult:

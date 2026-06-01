@@ -29,6 +29,7 @@ from .config import config
 from .context import ContextManager
 from .db import save_partial_results, save_report, update_job_status
 from .llm_service import LLMService
+from .memory import MemoryManager
 from .reporter import Reporter
 from .schemas import GitResult, JobStatus, RepoResult, StaticResult
 
@@ -74,6 +75,11 @@ class Orchestrator:
         # ContextManager 负责创建和校验分析上下文，
         # Agent 通过 RepositoryContext 获取所需信息。
         self._ctx_manager = ContextManager()
+
+        # --- v2.2: Memory 层 ---
+        # MemoryManager 负责每个流水线的 SharedMemory 生命周期，
+        # Agent 通过 SharedMemory 共享中间分析结果。
+        self._mem_manager = MemoryManager()
 
         logger.debug(
             "Orchestrator 已注册 %d 个 Agent: %s",
@@ -146,13 +152,21 @@ class Orchestrator:
             job_id, time.monotonic() - t0, repo_path,
         )
 
-        # --- 阶段二：并行分析（v2.1: 通过 Context 传递） ----------------
+        # --- 阶段二：并行分析（v2.2: Context + Memory） ----------------
         await self._set_status(job_id, JobStatus.ANALYZING, 20, "正在分析代码...")
-        # 创建分析上下文，Agent 通过 Context 获取所需信息
+        # 创建分析上下文和共享记忆
         context = self._ctx_manager.create(repo_url, repo_path, job_id)
+        memory = self._mem_manager.create()
+        self._registry.inject_memory(memory)
         static_result, repo_result, git_result, analyzer_durations = (
             await self._run_analyzers(job_id, context)
         )
+
+        logger.debug(
+            "流水线 [%s] Memory 使用: %d 条记录",
+            job_id, len(memory),
+        )
+        self._mem_manager.clear()
         logger.info(
             "流水线 [%s] 分析器完成: static=%s repo=%s git=%s 耗时=%s",
             job_id,

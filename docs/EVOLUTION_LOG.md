@@ -208,6 +208,7 @@ v2.0:
 
 - **时间**：2026-06-01
 - **版本**：v2.1
+- **Commit**：`24230bc`
 
 ### 目标
 
@@ -278,13 +279,80 @@ v2.1:
 
 ---
 
+## Phase 4 — Shared Memory Layer
+
+- **时间**：2026-06-01
+- **版本**：v2.2
+- **Commit**：待提交
+
+### 目标
+
+在 Agent 架构中引入 SharedMemory，为 Agent 间数据共享铺设基础设施。
+当前阶段铺设通道，暂不产生业务使用。
+
+### 为什么引入 SharedMemory
+
+Phase 2-3 中 Agent 之间完全隔离——每个 Agent 独立完成分析后返回结果，
+Agent 之间无法在分析过程中共享中间数据。未来场景需要：
+
+- StaticAgent 发现高风险文件后通知 GitAgent 聚焦分析其变更历史
+- RepoAgent 识别核心模块后传递给 StaticAgent 提高评分权重
+- 多个 Agent 写入同一分析结果供 Reporter 聚合
+
+解决方案：在 Agent 间引入线程安全的共享键值存储，Agent 在 `run()` 中
+可读写此存储，Orchestrator 和 Reporter 也可读取。
+
+### 新增
+
+| 模块 | 文件 | 职责 |
+|------|------|------|
+| `SharedMemory` | `memory/base.py` | 线程安全 KV 存储：`set/get/has/delete/keys/snapshot`，`threading.RLock` |
+| `get_by_prefix()` / `batch_set()` | `memory/shared_memory.py` | 辅助函数：按前缀筛选、批量写入 |
+| `MemoryManager` | `memory/memory_manager.py` | 生命周期管理：`create()/clear()/get_memory()` |
+
+### 架构变化
+
+```
+v2.1:
+  Orchestrator → ContextManager → Context → AgentRegistry → Agent
+
+v2.2:
+  Orchestrator
+    ├─→ ContextManager.create()           → RepositoryContext
+    ├─→ MemoryManager.create()            → SharedMemory
+    └─→ AgentRegistry.inject_memory()
+         └─→ Agent.run(ctx)  # self.memory 可用
+```
+
+### Agent 接口变更
+
+| 组件 | 变更 |
+|------|------|
+| `BaseAgent` | 构造函数新增 `memory: SharedMemory`, 属性 `self.memory` |
+| `StaticAgent` | 构造函数新增 `memory` 参数 |
+| `RepoAgent` | 构造函数新增 `memory` 参数 |
+| `GitAgent` | 构造函数新增 `memory` 参数 |
+| `AgentRegistry` | 新增 `inject_memory(memory)` 方法，向所有 Agent 注入 |
+| `Orchestrator` | 新增 `MemoryManager`，每流水线 `create()` → `inject_memory()` → 结束后 `clear()` |
+
+### 测试结果
+
+```
+=== RepoLens 端到端验证 ===
+12/12 全部通过
+```
+
+### 收益
+
+- Agent 间数据共享通道已就绪，Phase 5+ 可直接使用
+- `threading.RLock` 保证线程安全，兼容 `asyncio.to_thread` 场景
+- Memory 每次流水线独立实例，无数据泄漏风险
+
+---
+
 ## 后续规划
 
-### Phase 3 — Agent Memory
-
-为 Agent 增加记忆能力——缓存分析结果、记录仓库历史快照、支持增量分析。
-
-### Phase 4 — Agent Collaboration
+### Phase 5 — Agent Collaboration
 
 引入协调 Agent（Orchestrator Agent），Agent 间可传递分析结果。例如 StaticAgent 发现高风险文件后通知 GitAgent 聚焦分析该文件的变更历史。
 

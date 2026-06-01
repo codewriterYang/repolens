@@ -16,9 +16,12 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from .base import BaseAgent
+
+if TYPE_CHECKING:
+    from ..memory import SharedMemory
 
 logger = logging.getLogger(__name__)
 
@@ -141,6 +144,19 @@ class AgentRegistry:
     # ------------------------------------------------------------------
     # 生命周期
     # ------------------------------------------------------------------
+
+    def inject_memory(self, memory: SharedMemory) -> None:
+        """向所有已注册 Agent 注入 SharedMemory。
+
+        在每次流水线启动时由 Orchestrator 调用，
+        确保所有 Agent 共享同一个 Memory 实例。
+
+        参数:
+            memory: 当前流水线的 SharedMemory 实例。
+        """
+        for agent in self._agents.values():
+            agent.inject_memory(memory)
+        logger.debug("已向 %d 个 Agent 注入 SharedMemory", len(self._agents))
 
     def clear(self) -> None:
         """清空所有注册的 Agent。"""

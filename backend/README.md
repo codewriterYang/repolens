@@ -51,6 +51,10 @@ backend/
 │   │   ├── base.py           # RepositoryContext 不可变上下文
 │   │   ├── repository_context.py # 上下文工厂函数
 │   │   └── context_manager.py    # ContextManager 生命周期
+│   ├── memory/               # Memory 层（v2.2，Agent 共享记忆）
+│   │   ├── base.py           # SharedMemory 线程安全 KV 存储
+│   │   ├── shared_memory.py   # 辅助函数
+│   │   └── memory_manager.py  # MemoryManager 生命周期
 │   └── analyzers/
 │       ├── static_analyzer.py   # pylint + radon 静态分析
 │       ├── repo_analyzer.py     # README + 目录树 + LLM 仓库分析

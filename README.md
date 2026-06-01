@@ -161,6 +161,10 @@ repolens/
 │   │   │   ├── base.py          # RepositoryContext 不可变上下文
 │   │   │   ├── repository_context.py  # 上下文工厂函数
 │   │   │   └── context_manager.py     # ContextManager 生命周期
+│   │   ├── memory/              # Memory 层（v2.2）
+│   │   │   ├── base.py          # SharedMemory 线程安全 KV 存储
+│   │   │   ├── shared_memory.py # 辅助函数（前缀筛选等）
+│   │   │   └── memory_manager.py     # MemoryManager 生命周期
 │   │   └── analyzers/
 │   │       ├── static_analyzer.py  # Pylint + Radon
 │   │       ├── repo_analyzer.py    # README + 目录树 + LLM
