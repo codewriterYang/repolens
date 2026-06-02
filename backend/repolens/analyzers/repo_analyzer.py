@@ -112,7 +112,7 @@ class RepoAnalyzer:
     只有在整体失败时才会填充 error 字段。
     """
 
-    LLM_TIMEOUT = 90          # LLM 调用本身超时（秒）
+    LLM_TIMEOUT = 180         # LLM 整体超时（秒），预留 3 次请求+退避
     METADATA_MAX_BYTES = 4096  # 每个元数据文件的最大读取字节数
 
     def __init__(self, llm: LLMService) -> None:

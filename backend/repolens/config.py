@@ -17,9 +17,13 @@ class Config:
         default_factory=lambda: os.getenv("LLM_API_KEY", "sk-placeholder")
     )
     llm_model: str = field(
-        default_factory=lambda: os.getenv("LLM_MODEL", "gpt-4o-mini")
+        default_factory=lambda: os.getenv("LLM_MODEL", "deepseek-ai/DeepSeek-V4-Flash")
     )
-    llm_timeout_seconds: int = 60
+    llm_timeout_seconds: int = field(
+        default_factory=lambda: int(
+            os.getenv("LLM_TIMEOUT_SECONDS", "120")
+        )
+    )
 
     # 分析流水线
     pipeline_timeout_seconds: int = field(

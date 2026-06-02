@@ -282,6 +282,7 @@ POST /api/analyze
 | `TMP_DIR` | （自动检测系统临时目录） | 仓库克隆临时目录。可选，留空自动适配系统。Linux/Mac → `/tmp/repolens`，Windows → `%TEMP%\repolens` |
 | `PIPELINE_TIMEOUT_SECONDS` | `600` | 流水线总超时（秒），大仓库可适当调大 |
 | `CLONE_TIMEOUT_SECONDS` | `300` | 克隆超时（秒），大仓库可适当调大 |
+| `LLM_TIMEOUT_SECONDS` | `120` | LLM API 请求超时（秒），慢速 API 可调大 |
 
 ## 测试
 

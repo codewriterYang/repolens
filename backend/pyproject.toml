@@ -4,8 +4,7 @@ version = "2.0.0"
 description = "AI 驱动的仓库分析平台 — 代码质量、仓库意图、Git 活动、结构化洞察。"
 requires-python = ">=3.11"
 readme = "README.md"
-license = {text = "MIT"}
-
+license = "MIT"
 dependencies = [
     "fastapi>=0.110,<1",
     "uvicorn[standard]>=0.27,<1",
@@ -24,6 +23,9 @@ dev = [
     "pytest-asyncio>=0.23,<1",
     "ruff>=0.3,<1",
 ]
+
+[tool.setuptools.packages.find]
+exclude = ["data*"]
 
 [tool.ruff]
 target-version = "py311"
