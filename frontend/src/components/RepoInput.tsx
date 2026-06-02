@@ -8,7 +8,6 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import { cn } from '@/lib/utils';
 
 export interface RepoInputProps {
   onSubmit: (input: { repo_url: string }) => void;

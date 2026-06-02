@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { JobStatus, ReportJson, StatusResponse } from '@/types/contracts';
+import type { ReportJson, StatusResponse } from '@/types/contracts';
 
 // ---------------------------------------------------------------------------
 // 前端 UI 状态（简化后端细粒度状态）

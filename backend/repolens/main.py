@@ -85,7 +85,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="RepoLens",
-    version="1.0.0",
+    version="2.0.0",
     description="AI 驱动的仓库分析平台 — 代码质量、仓库意图、Git 活动、结构化洞察。",
     lifespan=lifespan,
 )
