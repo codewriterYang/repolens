@@ -1,0 +1,7 @@
+node_modules/
+dist/
+Dockerfile
+pnpm-lock.yaml
+pnpm-workspace.yaml
+README.md
+.gitignore
