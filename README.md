@@ -49,15 +49,23 @@ POST /api/analyze
 cp .env.example .env
 # 编辑 .env，填入 LLM_API_KEY
 
-# 2. 启动
+# 2. 启动（前后端全栈）
 docker compose up -d
-
-# 3. 访问
-# API 文档: http://localhost:8770/docs
-# 健康检查: http://localhost:8770/api/health
 ```
 
-镜像内置 Python + Git + Pylint + Radon，无需手动安装任何依赖。
+镜像内置 Python + Git + Pylint + Radon（后端）+ Node/Nginx（前端），无需手动安装任何依赖。
+
+| 服务 | 地址 | 用途 |
+|------|------|------|
+| **前端 UI** | http://localhost:5173 | 网页界面，输入仓库链接即可分析 |
+| **API 文档** | http://localhost:8770/docs | Swagger，直接调用接口 |
+| **健康检查** | http://localhost:8770/api/health | 确认后端存活 |
+
+前端自动通过 Nginx 将 `/api/*` 请求代理到后端，无需额外配置。
+
+> 📦 分析数据持久化在 `./data/` 目录（参见 [docker-compose.yml](./docker-compose.yml)），`docker compose down` 不会删除历史记录。
+>
+> 📖 更多 Docker 命令（构建、日志、容器调试、排错等）见 [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md)。
 
 ### 本地开发启动
 
@@ -250,6 +258,7 @@ POST /api/analyze
 | [ARCHITECTURE.md](./ARCHITECTURE.md) | 系统架构设计 |
 | [WORKFLOW.md](./WORKFLOW.md) | 完整分析工作流程 |
 | [DECISIONS.md](./DECISIONS.md) | 技术选型说明 |
+| [docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md) | Docker 部署运维指南 |
 | [docs/EVOLUTION_LOG.md](./docs/EVOLUTION_LOG.md) | 项目演进日志 |
 | [docs/architecture/](./docs/architecture/) | 架构图（Mermaid） |
 | [docs/adr/](./docs/adr/) | 架构决策记录（ADR） |
