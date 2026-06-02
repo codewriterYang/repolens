@@ -604,7 +604,7 @@ HTML 报告新增 Plan Summary 区域：
 | `TestPlannerAgent` | 3 | memory write / without memory / tasks not empty |
 | `TestReportAgent` | 5 | empty memory / write / HTML structure / plan summary / agent results |
 
-**总计**：53 个单元测试，全部通过。
+**总计**：55 个单元测试，全部通过。
 
 ### 前端交互修复
 
@@ -627,7 +627,7 @@ HTML 报告新增 Plan Summary 区域：
 
 | 文件 | 变更 |
 |------|------|
-| `tests/test_agent_architecture.py` | 新增，53 个单元测试 |
+| `tests/test_agent_architecture.py` | 新增，55 个单元测试 |
 | `tests/README.md` | 更新测试覆盖说明 |
 | `samples/README.md` | 更新示例说明 |
 | `backend/repolens/reporter.py` | HTML postMessage 改用 DOMContentLoaded+setTimeout |
@@ -641,7 +641,7 @@ HTML 报告新增 Plan Summary 区域：
 ### 测试结果
 
 ```
-53/53 agent architecture 单元测试全部通过
+55/55 agent architecture 单元测试全部通过
 手动端到端回归测试通过（分析→历史切换→任务完成→报告查看）
 ```
 
@@ -719,7 +719,7 @@ v2.6:
 ### 测试结果
 
 ```
-54/54 agent architecture 单元测试全部通过
+55/55 agent architecture 单元测试全部通过
 新增 strategy 相关测试 10+ 个
 ```
 
@@ -821,7 +821,7 @@ Test files excluded. Production code received priority analysis.
 
 - **时间**：2026-06-01
 - **版本**：v2.6.2
-- **Commit**：`（待提交）`
+- **Commit**：`42e5ca2`
 
 ### 目标
 

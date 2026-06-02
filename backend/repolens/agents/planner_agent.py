@@ -1,7 +1,8 @@
 """PlannerAgent — 分析计划编排 Agent。
 
-Phase 7: 升级为动态策略引擎。
-不再返回固定 tasks，而是根据仓库特征动态决定执行哪些分析任务。
+Phase 8: 从 skip-task 升级为 strategy 模式。
+基于仓库特征选择各 Agent 的执行策略（full/focused/fast），
+所有 Agent 始终执行，不再跳过。
 
 协作链路：
 RepositoryProfiler → PlanningRules → AnalysisPlan → SharedMemory
@@ -23,13 +24,14 @@ logger = logging.getLogger(__name__)
 
 
 class PlannerAgent(BaseAgent):
-    """分析计划编排 Agent（动态策略版）。
+    """分析计划编排 Agent（策略模式版）。
 
-    在流水线中第一个运行，根据仓库特征制定动态分析计划：
-    - 文件 > 1000 → 跳过 static_analysis
-    - README 不存在 → 跳过 repo_analysis
-    - 其余情况默认全部执行
+    在流水线中第一个运行，根据仓库 .py 文件数制定动态策略：
+    - ≤ 500 → static = "full"（完整 pylint + radon）
+    - 501–1000 → static = "focused"（排除测试文件的 pylint + radon）
+    - > 1000 → static = "fast"（跳过 pylint，仅 radon）
 
+    所有 Agent 始终执行，策略仅影响分析深度。
     计划通过 SharedMemory 传递给后续 Agent 和 Orchestrator。
     """
 
@@ -46,17 +48,17 @@ class PlannerAgent(BaseAgent):
             context: 不可变分析上下文。
 
         返回:
-            AnalysisPlan 包含动态决定的 tasks / skipped_tasks / reasons。
+            AnalysisPlan 包含动态决定的 strategy / tasks / reasons。
         """
-        # Phase 7: 不再返回固定 tasks，改为根据仓库特征动态决定
+        # Phase 8: 根据仓库特征动态选择执行策略（full/focused/fast）
         plan = self._dynamic_planner.plan(context.repo_path)
 
         # 将计划写入 SharedMemory
         if self._memory is not None:
             self._memory.set("analysis_plan", plan)
             logger.info(
-                "PlannerAgent: 动态计划 — tasks=%s skipped=%s reason=%s",
-                plan.tasks, plan.skipped_tasks, plan.reasons,
+                "PlannerAgent: 动态计划 — strategy=%s tasks=%s",
+                plan.strategy.model_dump(), plan.tasks,
             )
         else:
             logger.warning("PlannerAgent: SharedMemory 未注入，计划未持久化")

@@ -43,9 +43,11 @@ backend/
 │   ├── llm_service.py       # OpenAI 兼容 LLM 客户端（含缓存）
 │   ├── agents/               # Agent 层（v2.0，分析器的统一包装）
 │   │   ├── base.py           # BaseAgent 抽象基类
+│   │   ├── planner_agent.py  # PlannerAgent（策略规划，Phase 5-8）
 │   │   ├── static_agent.py   # 封装 StaticAnalyzer
 │   │   ├── repo_agent.py     # 封装 RepoAnalyzer
 │   │   ├── git_agent.py      # 封装 GitAnalyzer
+│   │   ├── report_agent.py   # ReportAgent（报告汇总，Phase 6）
 │   │   └── registry.py       # AgentRegistry 注册与调度
 │   ├── context/              # Context 层（v2.1，分析上下文管理）
 │   │   ├── base.py           # RepositoryContext 不可变上下文
@@ -55,6 +57,10 @@ backend/
 │   │   ├── base.py           # SharedMemory 线程安全 KV 存储
 │   │   ├── shared_memory.py   # 辅助函数
 │   │   └── memory_manager.py  # MemoryManager 生命周期
+│   ├── planner/              # Planner 层（v2.5，动态策略引擎）
+│   │   ├── repository_profiler.py # 仓库特征分析
+│   │   ├── planning_rules.py      # 规则引擎
+│   │   └── dynamic_planner.py     # 动态策略编排
 │   └── analyzers/
 │       ├── static_analyzer.py   # pylint + radon 静态分析
 │       ├── repo_analyzer.py     # README + 目录树 + LLM 仓库分析
@@ -89,6 +95,7 @@ backend/
 | `TMP_DIR` | （系统临时目录） | 仓库克隆存储目录 |
 | `PIPELINE_TIMEOUT_SECONDS` | `600` | 流水线超时（秒） |
 | `CLONE_TIMEOUT_SECONDS` | `300` | 克隆超时（秒） |
+| `LLM_TIMEOUT_SECONDS` | `120` | LLM API 请求超时（秒） |
 
 ## 测试
 

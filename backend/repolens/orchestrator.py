@@ -163,7 +163,7 @@ class Orchestrator:
         memory = self._mem_manager.create()
         self._registry.inject_memory(memory)
 
-        # Phase 7: PlannerAgent 动态制定分析计划
+        # Phase 8: PlannerAgent 动态制定分析计划（strategy 模式）
         plan = await self._run_planner(job_id, context)
 
         # 根据 Plan 动态执行分析 Agent
@@ -213,7 +213,7 @@ class Orchestrator:
         logger.info("流水线 [%s] 报告已持久化", job_id)
 
     # ------------------------------------------------------------------
-    # Planner 执行（Phase 5）
+    # Planner 执行（Phase 8）
     # ------------------------------------------------------------------
 
     async def _run_planner(
@@ -221,7 +221,7 @@ class Orchestrator:
     ) -> AnalysisPlan:
         """运行 PlannerAgent，返回动态分析计划。
 
-        Phase 7: Planner 失败时返回默认计划（全部执行）。
+        Phase 8: Planner 失败时返回默认计划（全部 full 模式执行）。
         """
         try:
             plan = await asyncio.wait_for(

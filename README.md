@@ -14,6 +14,17 @@ RepoLens 对克隆的仓库并行运行三个 Agent（静态/仓库/Git），通
 
 **Reporter（报告生成器）** 将所有结果合并为自包含的 HTML 报告，包含可折叠区域、行内图表和优先排序的改进建议。
 
+<details>
+<summary>🖥️ 运行效果预览</summary>
+
+| 页面 | 截图 |
+|------|------|
+| 分析输入页 | ![分析输入页](./images/01.jpeg) |
+| 报告概览 | ![报告概览](./images/03.jpeg) |
+| 代码质量详情 | ![代码质量详情](./images/02.jpeg) |
+
+</details>
+
 ## 架构概览
 
 ```
@@ -202,14 +213,18 @@ repolens/
 ├── frontend/                  # React + TypeScript 界面
 │   ├── src/
 │   │   ├── components/        # UI 组件
+│   │   │   └── __tests__/     # 组件测试
 │   │   ├── hooks/             # 自定义 React Hook
 │   │   ├── store/             # Zustand 状态管理
 │   │   ├── types/             # TypeScript 类型定义
 │   │   └── lib/               # API 客户端、工具函数
+│   ├── Dockerfile             # 多阶段构建（Node → Nginx）
+│   ├── nginx.conf             # SPA 路由 + API 反向代理
 │   ├── package.json
 │   ├── vite.config.ts
 │   └── README.md
 ├── tests/                     # 集成测试
+├── images/                    # 界面截图
 ├── scripts/                   # 开发辅助脚本
 ├── samples/                   # 推荐测试仓库列表
 ├── ARCHITECTURE.md            # 系统架构文档

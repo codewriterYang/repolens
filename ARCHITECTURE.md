@@ -42,16 +42,26 @@ repo_url（字符串）
      ▼
   Cloner.clone() ──▶ repo_path（本地文件系统路径）
      │
+     ▼
+  ContextManager.create() + MemoryManager.create()
+     │
+     ▼
+  PlannerAgent.run(ctx) ──▶ DynamicPlanner（Profiler+Rules）
+     │                        └─→ AnalysisPlan → SharedMemory
      ├──────────────────────────────────────────────┐
      │                    │                         │
      ▼                    ▼                         ▼
-StaticAnalyzer      RepoAnalyzer              GitAnalyzer
+StaticAgent          RepoAgent                GitAgent
+（StaticAnalyzer）   （RepoAnalyzer）         （GitAnalyzer）
      │                    │                         │
      ▼                    ▼                         ▼
 StaticResult        RepoResult                GitResult
 （Pydantic）        （Pydantic）              （Pydantic）
      │                    │                         │
-     └────────────────────┼─────────────────────────┘
+     └────────────────────┼──► SharedMemory ────────┘
+                          │
+                          ▼
+                   ReportAgent（汇总）
                           │
                           ▼
                    Reporter.render()
@@ -182,24 +192,26 @@ class MemoryManager:
 
 Orchestrator 每次流水线调用 `create()`，结束后调用 `clear()`。
 
-### Agent 接入（Phase 5: PlannerAgent 协作）
+### Agent 接入（Phase 5–8: PlannerAgent 协作）
 
-Phase 5–7 实现了完整的动态 Agent 协作链路：
+Phase 5–8 实现了完整的动态 Agent 协作链路：
 
 ```
 Orchestrator → Context+Memory
   ├─→ PlannerAgent.run(ctx)
   │     └─→ DynamicPlanner (Profiler + Rules) → AnalysisPlan
-  │           ├─ skipped: file_count>1000→skip static, !readme→skip repo
+  │           ├─ strategy.static: "full" | "focused" | "fast"
   │           └─→ memory.set("analysis_plan", plan)
-  ├─→ [StaticAgent | RepoAgent | GitAgent].run(ctx)  # 根据 Plan 动态跳过
-  │     └─→ memory.set("..._result", result)
+  ├─→ [StaticAgent | RepoAgent | GitAgent].run(ctx)  # 始终全部执行
+  │     │   ├─ StaticAgent 按 strategy.static 调整深度
+  │     │   └─→ memory.set("..._result", result)
   └─→ ReportAgent.run(ctx)
         └─→ memory.get(...) → ReportResult (含 Plan Summary)
 ```
 
-Phase 7 引入 DynamicPlanner：规则引擎根据仓库特征（文件数、README）
-自动决定分析策略，Orchestrator 按 Plan 动态执行——不再硬编码三路并行。
+Phase 8 升级为 Strategy-Based Planning：规则引擎根据仓库特征
+（.py 文件数）选择 full/focused/fast 策略，所有 Agent 始终执行，
+仅改变 StaticAgent 的分析深度——不再硬编码 skip 逻辑。
 
 ---
 
@@ -236,19 +248,25 @@ asyncio.create_task(orch.run_pipeline(job_id, url))
     │
     ├── await cloner.clone()                     [串行 — 必须先完成]
     │
+    ├── await planner_agent.run(ctx)             [串行 — 策略先行]
+    │     └─→ plan → SharedMemory
+    │
     ├── await asyncio.gather(                    [并行 — 三个同时启动]
-    │       run_static(),                         各自用 asyncio.wait_for() 包装
-    │       run_repo(),                           独立超时
-    │       run_git(),                            return_exceptions=True
+    │       static_agent.run(ctx),                各自用 asyncio.wait_for() 包装
+    │       repo_agent.run(ctx),                  独立超时
+    │       git_agent.run(ctx),                   return_exceptions=True
     │   )
     │
-    └── reporter.render()                        [串行 — 需要所有结果]
+    ├── await report_agent.run(ctx)              [串行 — 汇总所有结果]
+    │
+    └── 持久化到 SQLite                          [串行 — 最后落盘]
 ```
 
 关键设计决策：
 - `gather()` 中 `return_exceptions=True` 意味着失败的分析器返回其异常对象 — 我们解包并转换为带错误标记的结果对象
 - 每个分析器内部使用 `asyncio.wait_for()` 实现双重防护
 - 编排器在整个流水线外再包装一层 `asyncio.wait_for()` 作为总超时
+- PlannerAgent 先运行制定策略，三个分析 Agent 随后并行
 
 ## 数据库结构
 

@@ -24,7 +24,7 @@ class DynamicPlanner:
 
         planner = DynamicPlanner()
         plan = planner.plan(repo_path)
-        # plan.tasks → 根据仓库特征动态决定的执行列表
+        # plan.strategy.static → 根据仓库特征选择 full/focused/fast
     """
 
     def __init__(self) -> None:

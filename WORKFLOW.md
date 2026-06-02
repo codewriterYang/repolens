@@ -14,17 +14,31 @@ GitHub URL（用户输入）
 └─────────────────────────┘
     │
     ▼
+┌───────────────────────────────────────────────────┐
+│ 2. 策略规划（Phase 5）                              │
+│    PlannerAgent → DynamicPlanner                   │
+│      ├─ RepositoryProfiler（统计 .py 文件数）        │
+│      └─ PlanningRules（决定 full/focused/fast 策略） │
+└───────────────────────────────────────────────────┘
+    │
+    ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│ 2. 并行分析（asyncio.gather）                                     │
+│ 3. 并行分析（asyncio.gather）                                     │
 │                                                                   │
 │  ┌───────────────────┐ ┌───────────────────┐ ┌───────────────────┐
-│  │ StaticAnalyzer    │ │ RepoAnalyzer      │ │ GitAnalyzer       │
+│  │ StaticAgent       │ │ RepoAgent         │ │ GitAgent          │
 │  │（代码质量）       │ │（仓库意图）       │ │（Git活动）        │
 │  │                   │ │                   │ │                   │
 │  │ 评估对象：        │ │ 评估对象：        │ │ 评估对象：        │
 │  │ · Python源文件    │ │ · README内容      │ │ · Git提交历史     │
 │  │ · 函数圈复杂度    │ │ · 目录结构        │ │ · 贡献者活动      │
 │  │ · Lint问题分布    │ │ · 项目元数据      │ │ · CI/CD配置       │
+│  │                   │ │                   │ │                   │
+│  │ 策略影响：        │ │                   │ │                   │
+│  │ · full → 全量扫描  │ │                   │ │                   │
+│  │ · focused → 排除    │ │                   │ │                   │
+│  │   测试文件         │ │                   │ │                   │
+│  │ · fast → 仅 radon  │ │                   │ │                   │
 │  └───────────────────┘ └───────────────────┘ └───────────────────┘
 │           │                     │                     │
 │           ▼                     ▼                     ▼
@@ -53,11 +67,25 @@ GitHub URL（用户输入）
 - **清理**：流水线结束后自动删除（`finally` 块中调用 `cleanup()`）
 - **支持本地路径**：如果输入不是 HTTP(S) URL，则作为本地目录路径直接使用（不做克隆和清理）
 
-## 阶段二：三大 Agent 并行执行
+## 阶段二：策略规划 — PlannerAgent
+
+克隆完成后，PlannerAgent 先分析仓库特征，再决定每个 Agent 的执行策略：
+
+1. **RepositoryProfiler** — 扫描仓库，统计 `.py` 文件数、检测 README/CI/Docker 等特征
+2. **PlanningRules** — 基于文件数选择策略：`full` / `focused` / `fast`
+3. 策略结果写入 **SharedMemory**，供后续 Agent 读取
+
+| 文件数 | 策略 | StaticAgent 行为 |
+|--------|------|------------------|
+| ≤ 500 | `full` | 完整 pylint + radon |
+| 501–1000 | `focused` | 排除测试文件后跑 pylint + 全量 radon |
+| > 1000 | `fast` | 跳过 pylint，仅 radon cc |
+
+## 阶段三：三大 Agent 并行执行
 
 三个 Agent（各封装一个 Analyzer）通过 Orchestrator → AgentRegistry → `asyncio.gather` 同时启动，各自有独立超时，单个失败不影响整体。
 
-### 2.1 StaticAnalyzer — 代码质量分析
+### 3.1 StaticAnalyzer — 代码质量分析
 
 **评估对象**：仓库中所有 `.py` 源文件
 
@@ -65,8 +93,8 @@ GitHub URL（用户输入）
 
 | 工具（子进程） | 命令 | 检测内容 | 产出 |
 |--------------|------|---------|------|
-| pylint（JSON模式） | `pylint --output-format=json *.py` | 逐行lint问题（error/warning/convention等） | 按文件分组的lint消息 |
-| pylint（文本模式） | `pylint --score=y --output-format=text *.py` | 文件级评分（0.0-10.0） | 每个文件的pylint评分 |
+| pylint（JSON模式） | `pylint --recursive=y --output-format=json <repo_path>` | 逐行lint问题（error/warning/convention等） | 按文件分组的lint消息 |
+| pylint（文本模式） | `pylint --recursive=y --score=y --output-format=text <repo_path>` | 文件级评分（0.0-10.0） | 每个文件的pylint评分 |
 | radon | `radon cc --json --min=B .` | 函数圈复杂度（Cyclomatic Complexity） | 每个函数的CC值和等级（A-F） |
 
 **执行方式**：三个子进程并行 → 结果在内存中合并
@@ -86,7 +114,7 @@ GitHub URL（用户输入）
 - `file_heatmap` — 每文件逐行风险热力图
 - `file_risk_summary` — 每文件风险摘要（lint问题数、最大复杂度、综合风险等级），按 HIGH → MEDIUM → LOW 排序
 
-### 2.2 RepoAnalyzer — 仓库意图分析
+### 3.2 RepoAnalyzer — 仓库意图分析
 
 **评估对象**：README 内容、目录结构、项目元数据（通过 LLM 理解项目是什么、怎么组织的）
 
@@ -137,7 +165,7 @@ GitHub URL（用户输入）
 - `readme_quality_score` — README 质量评分（0-100）
 - `inferred_risks` — 2-4 个推断风险（含类别、严重度、描述）
 
-### 2.3 GitAnalyzer — Git 活动分析
+### 3.3 GitAnalyzer — Git 活动分析
 
 **评估对象**：Git 仓库的完整提交历史
 
@@ -172,7 +200,7 @@ GitHub URL（用户输入）
 - `activity_over_time` — 按周分组的提交趋势
 - `ci_cd_config` — 是否有 CI/CD 配置
 
-## 阶段三：报告生成 — Reporter
+## 阶段四：报告生成 — Reporter
 
 将三个分析器的结果汇总，生成统一的结构化报告。
 

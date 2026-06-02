@@ -13,6 +13,8 @@ React + TypeScript 单页应用，提供仓库分析的可视化界面。
 
 ## 快速开始
 
+### 本地开发
+
 ```bash
 cd frontend
 
@@ -23,40 +25,71 @@ pnpm install
 pnpm dev
 ```
 
-前端运行在 `http://localhost:5173`，已配置 API 代理到后端 `http://localhost:8770`。
+前端运行在 `http://localhost:5173`，已配置 Vite 代理到后端 `http://localhost:8770`。
 
 > 请先启动后端服务，参见 [后端 README](../backend/README.md)。
 
-## 项目结构
+### Docker 部署
 
+前端已容器化，通过 Nginx 反向代理 `/api/` 到后端：
+
+```bash
+# 在项目根目录一键启动（含前后端）
+docker compose up -d
 ```
-frontend/src/
-├── App.tsx                  # 应用入口，布局与主逻辑
-├── main.tsx                 # React 挂载点
-├── index.css                # 全局样式 + Tailwind 指令
+
+| 组件 | 说明 |
+|------|------|
+| `Dockerfile` | 多阶段构建：Node 20 Alpine 构建 → Nginx Alpine 托管 |
+| `nginx.conf` | Gzip 压缩 + SPA 路由回退 + `/api/` 反向代理到 `backend:8770` |
+
+Docker 访问 `http://localhost:5173`（映射到 Nginx 80 端口）。
+
+```json
+frontend/
+├── src/
+│   ├── App.tsx                  # 应用入口，布局与主逻辑（含历史查看）
+│   ├── main.tsx                 # React 挂载点
+│   ├── index.css                # 全局样式 + Tailwind 指令
+│   │
+│   ├── components/
+│   │   ├── RepoInput.tsx        # 仓库 URL 输入表单
+│   │   ├── ProgressPanel.tsx    # 分析进度展示
+│   │   ├── ReportViewer.tsx     # 报告渲染（健康评分 + 统计摘要 + iframe）
+│   │   ├── HistoryList.tsx      # 历史分析记录列表
+│   │   ├── ui/                  # shadcn/ui 基座组件
+│   │   │   ├── button.tsx
+│   │   │   ├── card.tsx
+│   │   │   └── input.tsx
+│   │   └── __tests__/           # 组件测试
+│   │       ├── RepoInput.test.tsx
+│   │       └── HistoryList.test.tsx
+│   │
+│   ├── hooks/
+│   │   └── useAnalysisJob.ts    # 分析任务管理 Hook（提交 + 轮询）
+│   │
+│   ├── store/
+│   │   └── analysisStore.ts     # Zustand 全局状态
+│   │
+│   ├── lib/
+│   │   ├── api.ts               # Axios HTTP 客户端
+│   │   └── utils.ts             # cn() 工具函数（clsx + tailwind-merge）
+│   │
+│   ├── types/
+│   │   └── contracts.ts         # TypeScript 类型定义（与后端 Pydantic 对齐）
+│   │
+│   └── test/
+│       └── setup.ts             # 测试环境配置
 │
-├── components/
-│   ├── RepoInput.tsx        # 仓库 URL 输入表单
-│   ├── ProgressPanel.tsx    # 分析进度展示
-│   ├── ReportViewer.tsx     # HTML 报告渲染（iframe 沙箱）
-│   ├── HistoryList.tsx      # 历史分析记录列表
-│   └── ui/                  # shadcn/ui 基座组件
-│       └── card.tsx
-│
-├── hooks/
-│   └── useAnalysisJob.ts    # 分析任务管理 Hook（提交 + 轮询）
-│
-├── store/
-│   └── analysisStore.ts     # Zustand 全局状态
-│
-├── lib/
-│   └── api.ts               # Axios HTTP 客户端
-│
-├── types/
-│   └── contracts.ts         # TypeScript 类型定义
-│
-└── test/
-    └── setup.ts             # 测试环境配置
+├── Dockerfile                   # 多阶段构建（Node → Nginx）
+├── nginx.conf                   # SPA 路由 + /api/ 反向代理
+├── index.html                   # 入口 HTML
+├── package.json
+├── tsconfig.json
+├── vite.config.ts
+├── tailwind.config.js
+├── postcss.config.js
+└── README.md
 ```
 
 ## 组件说明
@@ -64,9 +97,9 @@ frontend/src/
 | 组件 | 功能 |
 |------|------|
 | `RepoInput` | 输入 GitHub URL 或本地路径，提交分析请求 |
-| `ProgressPanel` | 展示分析进度（百分比 + 阶段标签） |
-| `ReportViewer` | 通过 `<iframe>` 沙箱渲染自包含 HTML 报告 |
-| `HistoryList` | 展示历史分析记录，点击可加载历史报告 |
+| `ProgressPanel` | 展示分析进度（百分比 + 阶段标签 + Job ID） |
+| `ReportViewer` | 展示健康评分摘要卡片、三分析器结果统计、改进建议列表（按优先级分色），并通过 `<iframe>` 沙箱渲染完整 HTML 报告 |
+| `HistoryList` | 展示历史分析记录，支持自动轮询刷新、状态颜色标签、点击加载历史报告 |
 
 ## 状态管理
 
@@ -97,7 +130,7 @@ analysisStore
 
 ## 代理配置
 
-开发模式下 Vite 自动将 `/api` 请求代理到后端：
+**开发模式**下 Vite 自动将 `/api` 请求代理到后端：
 
 ```ts
 // vite.config.ts
@@ -109,7 +142,7 @@ proxy: {
 }
 ```
 
-无需额外配置，前后端同源访问。
+**生产模式**（Docker）下由 Nginx 反向代理处理（参见 `nginx.conf`）。
 
 ## 更多文档
 
